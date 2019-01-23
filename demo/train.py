@@ -3,6 +3,7 @@ import numpy as np
 
 from utils.Param import Param
 from utils.eval import Evaluator
+from utils.viz import ScalarPlot
 from network.model_fn import triplet_model_fn
 from network.dataset.sem_data_sampler import train_input_fn, test_input_fn, load_full_dataset
 from network.train import TripletEstimator
@@ -13,7 +14,8 @@ np.random.seed(2019)
 tf.set_random_seed(2019)
 
 # parameters
-param = Param(log_dir='../log')
+param = Param(log_dir='../log/ms_softmargin_f128_test')
+
 
 # load test dataset
 tf.logging.info("Init test dataset ...")
@@ -56,64 +58,83 @@ spec = triplet_model_fn(
     use_regularization_loss=param.use_regularization,
     learning_rate=param.learning_rate
 )
-estimator = TripletEstimator(spec)
+estimator = TripletEstimator(spec, save_dir=param.log_dir)
 
 # evaluator for image retrieval accuracy
 evaluator = Evaluator(top_k=param.top_k, iou_threshold=param.iou_threshold)
+n_eval_images = 5
+eval_ind = np.arange(len(test_images))
+np.random.shuffle(eval_ind)
+eval_start_idx = 0
+
+n_accuracy = 5
+accuracy_update_idx = 0
+accuracy = np.zeros((n_accuracy, len(param.down_factors)), dtype=np.float32)
+
+n_lines = len(param.down_factors) + 1
+legends = ["down-{:d}".format(factor) for factor in param.down_factors]
+legends.append("mean")
+acc_plot = ScalarPlot(n_lines, legends)
+loss_plot = ScalarPlot(1, ['triplet-loss'])
+
+test_data_sampler.set_aug_vflip(False)
+test_data_sampler.set_aug_hflip(False)
 
 for epoch in range(param.n_epoch):
-    # tf.logging.info('TRAIN {:d} start...'.format(epoch))
-    # estimator.train(dataset_initializer=train_dataset_init, log_every=param.train_log_every)
-    # tf.logging.info('TRAIN {:d} end.'.format(epoch))
+    tf.logging.info('TRAIN {:d} start...'.format(epoch))
+    loss = estimator.train(dataset_initializer=train_dataset_init, log_every=param.train_log_every)
+    loss_plot.update(np.array([loss]))
+    tf.logging.info('TRAIN {:d} end.'.format(epoch))
 
-    val_idx = 0
-    val_img = test_images[val_idx]
-    val_fn = test_filenames[val_idx]
-    val_xy = test_xy[val_idx]
+    tf.logging.info('TEST {:d} start...'.format(epoch))
+    ind = eval_ind[eval_start_idx:eval_start_idx + n_eval_images]
+    if len(ind) == 0:
+        raise ValueError("There must be at least one image to test!")
 
-    test_data_sampler.set_image(val_img)
-    test_data_sampler.set_sampling_method(True, stride=param.stride)
-    test_db = estimator.run(test_dataset_init, False)
+    local_acc = np.zeros((len(param.down_factors), ), dtype=np.float32)
+    for val_idx in ind:
+        val_img = test_images[val_idx]
+        val_fn = test_filenames[val_idx]
+        val_xy = test_xy[val_idx]
 
-    test_data_sampler.set_sampling_method(False, xy=val_xy)
-    # todo: set multiscale parameters
-    test_q = estimator.run(test_dataset_init, True)
+        test_data_sampler.set_image(val_img)
+        test_data_sampler.set_aug_multiscale(None)
+        test_data_sampler.set_sampling_method(True, stride=param.stride)
+        test_db = estimator.run(test_dataset_init, False)
 
-    # todo: compute accuracy
-    # accuracy, top_k_ind, top_k_iou = evaluator(test_db.features, test_q.features)
-    evaluator(test_db.features, test_q.features)
-    break
+        test_data_sampler.set_sampling_method(False, xy=val_xy)
+        for idx, down_factor in enumerate(param.down_factors):
+            test_data_sampler.set_aug_multiscale([down_factor])
+            test_q = estimator.run(test_dataset_init, False)
+            acc, _, _ = evaluator(test_db, test_q)
+            local_acc[idx] += acc
+    local_acc /= len(ind)
+
+    accuracy[accuracy_update_idx] = local_acc
+    accuracy_update_idx = (accuracy_update_idx+1) % n_accuracy
+
+    if len(ind) < n_eval_images:
+        np.random.shuffle(eval_ind)
+        eval_start_idx = 0
+        tf.logging.info('Shuffle test image array!')
+    else:
+        eval_start_idx += n_eval_images
+
+    avg_accuracy = np.mean(accuracy, axis=0)
+    avg_avg_accuracy = np.mean(avg_accuracy)
+    acc_plot.update(np.append(avg_accuracy, avg_avg_accuracy))
+    # print('accuracy: ', accuracy)
+    # print('avg. accuracy: ', avg_accuracy)
+    # print('avg. avg. accuracy: ', avg_avg_accuracy)
+    tf.logging.info('Accuracy: {}, {}'.format(avg_accuracy, avg_avg_accuracy))
+    tf.logging.info('TEST {:d} end.'.format(epoch))
+
+    if epoch % param.save_every == 0:
+        estimator.save(param.project_name, global_step=epoch)
 
 
+acc_plot.hold()
 
-
-
-# if __name__ == '__main__':
-#     tf.reset_default_graph()
-#     tf.logging.set_verbosity(tf.logging.INFO)
-#
-#     # Load the parameters from json file
-#     args = parser.parse_args()
-#     json_path = os.path.join(args.model_dir, 'params.json')
-#     assert os.path.isfile(json_path), "No json configuration file found at {}".format(json_path)
-#     params = Params(json_path)
-#
-#     # Define the model
-#     tf.logging.info("Creating the model...")
-#     config = tf.estimator.RunConfig(tf_random_seed=230,
-#                                     model_dir=args.model_dir,
-#                                     save_summary_steps=params.save_summary_steps)
-#     estimator = tf.estimator.Estimator(model_fn, params=params, config=config)
-#
-#     # Train the model
-#     tf.logging.info("Starting training for {} epoch(s).".format(params.num_epochs))
-#     estimator.train(lambda: train_input_fn(args.data_dir, params))
-#
-#     # Evaluate the model on the test set
-#     tf.logging.info("Evaluation on test set.")
-#     res = estimator.evaluate(lambda: test_input_fn(args.data_dir, params))
-#     for key in res:
-#         print("{}: {}".format(key, res[key]))
 
 
 

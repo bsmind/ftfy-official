@@ -2,11 +2,12 @@ import tensorflow as tf
 from network.model.base import BaseNet
 
 class Net(BaseNet):
-    def __init__(self, n_feats, weight_decay=0.0001, name="simple_cnn"):
+    def __init__(self, n_feats, weight_decay=0.0001, reuse=None, name="simple_cnn"):
         super().__init__(name)
 
         self.weight_decay = weight_decay
         self.n_feats = n_feats
+        self.reuse = reuse
 
     def call(self, images, is_training, **kwargs):
         bn_prefix = kwargs.pop("bn_prefix", "")
@@ -25,11 +26,16 @@ class Net(BaseNet):
         bn_args = {
             'training': is_training
         }
+        pool_args = {
+            'pool_size': 2,
+            'strides': 2,
+            'padding': 'same'
+        }
 
         with tf.variable_scope(self.name, reuse=tf.AUTO_REUSE):
-            net = tf.layers.batch_normalization(images, **bn_args, name=bn_prefix + '_bn0')
+            #net = tf.layers.batch_normalization(images, **bn_args, name=bn_prefix + '_bn0')
 
-            net = tf.layers.conv2d(net,  32, 3, 1, name='conv1_1', **conv_args)
+            net = tf.layers.conv2d(images,  32, 3, 1, name='conv1_1', **conv_args)
             net = tf.layers.batch_normalization(net, **bn_args, name=bn_prefix + '_bn1_1')
             net = tf.nn.relu(net)
 
@@ -37,7 +43,7 @@ class Net(BaseNet):
             net = tf.layers.batch_normalization(net, **bn_args, name=bn_prefix + '_bn1_2')
             net = tf.nn.relu(net)
             #net = tf.layers.max_pooling2d(net, 2, 2, padding='same')
-            net = tf.layers.average_pooling2d(net, pool_size=2, strides=2, padding='same')
+            net = tf.layers.average_pooling2d(net, **pool_args)
 
             net = tf.layers.conv2d(net   ,  64, 3, 1, name='conv2_1', **conv_args)
             net = tf.layers.batch_normalization(net, **bn_args, name=bn_prefix + '_bn2_1')
@@ -47,7 +53,7 @@ class Net(BaseNet):
             net = tf.layers.batch_normalization(net, **bn_args, name=bn_prefix + '_bn2_2')
             net = tf.nn.relu(net)
             #net = tf.layers.max_pooling2d(net, 2, 2, padding='same')
-            net = tf.layers.average_pooling2d(net, pool_size=2, strides=2, padding='same')
+            net = tf.layers.average_pooling2d(net, **pool_args)
 
             net = tf.layers.conv2d(net, 128, 3, 1, name='conv3_1', **conv_args)
             net = tf.layers.batch_normalization(net, **bn_args, name=bn_prefix + '_bn3_1')
@@ -57,7 +63,7 @@ class Net(BaseNet):
             net = tf.layers.batch_normalization(net, **bn_args, name=bn_prefix + '_bn3_2')
             net = tf.nn.relu(net)
             #net = tf.layers.max_pooling2d(net, 2, 2, padding='same')
-            net = tf.layers.average_pooling2d(net, pool_size=2, strides=2, padding='same')
+            net = tf.layers.average_pooling2d(net, **pool_args)
 
             # net = tf.layers.conv2d(net, 256, 3, 1, name='conv4_1', **conv_args)
             # net = tf.layers.conv2d(net   , 256, 3, 1, name='conv4_2', **conv_args)
@@ -65,8 +71,9 @@ class Net(BaseNet):
             # net = tf.nn.relu(net)
 
             net = tf.layers.flatten(net)
+            net = tf.layers.dropout(net, rate=0.5, training=is_training)
             net = tf.layers.dense(net, self.n_feats, name='fc1', **fc_args)
-            net = tf.layers.batch_normalization(net, **bn_args, name=bn_prefix + '_bn5')
+            net = tf.layers.batch_normalization(net, **bn_args, name=bn_prefix + '_bn4')
             net = tf.nn.l2_normalize(net, axis=1)
             #net = tf.nn.sigmoid(net)
 

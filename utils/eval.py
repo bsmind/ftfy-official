@@ -9,7 +9,8 @@ def calc_iou(ref_y, ref_x, other_ys, other_xs, rect_sz):
     br_x = np.minimum(ref_x + rect_sz[1], other_xs + rect_sz[1])
     br_y = np.minimum(ref_y + rect_sz[0], other_ys + rect_sz[0])
 
-    intersect_area = np.maximum(0., (br_x - ul_x) * (br_y - ul_y))
+    #intersect_area = np.maximum(0., (br_x - ul_x) * (br_y - ul_y))
+    intersect_area = np.maximum(0, br_x - ul_x) * np.maximum(0, br_y - ul_y)
     area = rect_sz[0] * rect_sz[1]
     return np.clip(intersect_area / (2*area - intersect_area), 0., 1.)
 
@@ -148,22 +149,36 @@ class Evaluator_old(object):
         return accuracy / N
 
 class Evaluator(object):
-    def __init__(self, top_k, iou_threshold):
+    def __init__(self, iou_threshold, top_k=None):
         self.top_k = top_k
         self.iou_threshold = iou_threshold
 
-    def __call__(self, db, queries):
+    def __call__(self, db, queries, rect_sz=(204,204)):
         '''distmap
         - # queries x # db items
         '''
-        distmap = euclidean_distances(queries, db)
+        distmap = euclidean_distances(queries.features, db.features)
+        n_queries = len(distmap)
 
         # compute top k (# queries x top_k)
         top_k_ind = np.argsort(distmap, axis=1)
-        top_k_ind = top_k_ind[:, :self.top_k]
+        if self.top_k is not None:
+            top_k_ind = top_k_ind[:, :self.top_k]
 
+        # compute accuracy
+        top_k_ious = []
+        accuracy = 0
+        for i in range(n_queries):
+            ind = top_k_ind[i]
+            db_x0 = db.x0[ind]
+            db_y0 = db.y0[ind]
+            q_x0 = queries.x0[i]
+            q_y0 = queries.y0[i]
+            ious = calc_iou(q_y0, q_x0, db_y0, db_x0, rect_sz=rect_sz)
+            accuracy += np.sum(ious > self.iou_threshold) > 0
+            top_k_ious.append(ious)
+        accuracy /= n_queries
+        top_k_ious = np.vstack(top_k_ious)
 
-        print('db: ', db.shape)
-        print('q: ', queries.shape)
-        print('distmap: ', distmap.shape)
+        return accuracy, top_k_ind, top_k_ious
 

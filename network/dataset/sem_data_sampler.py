@@ -1,6 +1,6 @@
 import numpy as np
 import tensorflow as tf
-from utils.utils import random_downsample, get_image_list
+from utils.utils import random_downsample, get_image_list, downsample
 
 def inrange(ref_min, ref_max, v):
     return ref_min <= v < ref_max
@@ -120,6 +120,31 @@ class DataSamplerIoU(object):
                 positives[i] = random_downsample(positives[i], self.aug_multiscale)
                 negatives[i] = random_downsample(negatives[i], self.aug_multiscale)
 
+    # def _get_triplet_examples(self):
+    #     # easy triplets
+    #     # positive > 0.7, negative < 0.3
+    #     p_dx, p_dy = self.sampler(low=0.7, high=1.0, n=1)
+    #     n_dx, n_dy = self.sampler(low=0.0, high=0.3, n=1)
+    #
+    #     # hard triplets
+    #     # positive > negative, both are either > 0.5 or < 0.5
+    #     if np.random.random() < 0.5:
+    #         iou_thresh = np.random.choice(np.arange(0.1, 0.5, 0.1), 2, replace=False)
+    #     else:
+    #         iou_thresh = np.random.choice(np.arange(0.5, 1.0, 0.1), 2, replace=False)
+    #     iou_thresh = np.sort(iou_thresh)
+    #     p_dx, p_dy = self.sampler(low=iou_thresh[1], high=1.0, n=1)
+    #     n_dx, n_dy = self.sampler(low=iou_thresh[0], high=iou_thresh[1], n=1)
+    #
+    #     # semi-hard
+    #     # p_dx, p_dy = self.sampler(low=0.7, high=1.0, n=1)
+    #     # n_dx, n_dy = self.sampler(low=0.0, high=0.7, n=1)
+    #
+    #     _px, _py = p_dx[0], p_dy[0]
+    #     _nx, _ny = n_dx[0], n_dy[0]
+    #     return _px, _py, _nx, _ny
+
+
     def __next__(self):
         # select random images to generate random samples
         selected_img_ind = self._get_random_image_ind()
@@ -143,12 +168,9 @@ class DataSamplerIoU(object):
 
             x = [x for x, _ in cxy]
             y = [y for _, y in cxy]
-            x = np.random.choice(x, self.n_crops_per_img, replace=True)
-            y = np.random.choice(y, self.n_crops_per_img, replace=True)
-
-            # iou_thresh = np.random.uniform(low=0.3, high=0.95, size=1)
-            # p_dx, p_dy = self.sampler(low=iou_thresh, high=1.0, n=self.n_crops_per_img)
-            # n_dx, n_dy = self.sampler(low=0.0, high=iou_thresh, n=self.n_crops_per_img)
+            if len(cxy) > self.n_crops_per_img:
+                x = np.random.choice(x, self.n_crops_per_img, replace=False)
+                y = np.random.choice(y, self.n_crops_per_img, replace=False)
 
             def _select_v(_min_v, _max_v, _v0, _v1, _dv):
                 if inrange(_min_v, _max_v, _v0 - _dv) and inrange(_min_v, _max_v, _v1 + _dv):
@@ -159,20 +181,16 @@ class DataSamplerIoU(object):
                 else:
                     return _v0 + _dv
 
-            # for _x, _y, _px, _py, _nx, _ny in \
-            #     zip(x, y, p_dx, p_dy, n_dx, n_dy):
             for _x, _y in zip(x, y):
                 if count >= n_samples: break
 
-                #iou_thresh = np.random.uniform(low=0.3, high=0.95, size=1)
                 iou_thresh = np.random.choice(np.arange(0.1, 1.0, 0.1), 2, replace=False)
                 iou_thresh = np.sort(iou_thresh)
-
                 p_dx, p_dy = self.sampler(low=iou_thresh[1], high=1.0, n=1)
                 n_dx, n_dy = self.sampler(low=iou_thresh[0], high=iou_thresh[1], n=1)
+
                 _px, _py = p_dx[0], p_dy[0]
                 _nx, _ny = n_dx[0], n_dy[0]
-                #print('iou_threshold: ', iou_thresh)
 
                 x0 = _x - self.patch_size[1]//2
                 y0 = _y - self.patch_size[0]//2
@@ -181,19 +199,9 @@ class DataSamplerIoU(object):
 
                 px0 = _select_v(0, imgw, x0, x1, _px)
                 py0 = _select_v(0, imgh, y0, y1, _py)
-                #px1 = px0 + self.patch_size[1]
-                #py1 = py0 + self.patch_size[0]
 
                 nx0 = _select_v(0, imgw, x0, x1, _nx)
                 ny0 = _select_v(0, imgh, y0, y1, _ny)
-                #nx1 = nx0 + self.patch_size[1]
-                #ny1 = ny0 + self.patch_size[0]
-
-                # show_triplet(np.squeeze(cimg),
-                #              (x0, y0),
-                #              (px0, py0),
-                #              (nx0, ny0),
-                #              self.patch_size)
 
                 anchors[count] = self._get_image(cimg, x0, y0)
                 positives[count] = self._get_image(cimg, px0, py0)
@@ -356,8 +364,8 @@ class TestDataSamplerIoU(object):
 
 def train_preprocessor(anchors, positives, negatives):
 
-    anchors = tf.image.random_flip_up_down(anchors)
-    anchors = tf.image.random_flip_left_right(anchors)
+    # anchors = tf.image.random_flip_up_down(anchors)
+    # anchors = tf.image.random_flip_left_right(anchors)
     # anchors = tf.image.random_contrast(anchors, lower=0.2, upper=1.8)
     # anchors = tf.image.random_brightness(anchors, max_delta=0.5)
 

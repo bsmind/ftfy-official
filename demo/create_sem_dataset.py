@@ -53,4 +53,4 @@ if __name__ == '__main__':
     ih.register_key_actions(key_actions)
     plt.show()
 
-    images.save_to_file(file_list, dataset_name, file_to_zoom)
+    #images.save_to_file(file_list, dataset_name, file_to_zoom)

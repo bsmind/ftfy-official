@@ -1,5 +1,7 @@
 import matplotlib.pyplot as plt
+import matplotlib.gridspec as gridspec
 from matplotlib.patches import Rectangle
+
 import numpy as np
 
 def merge_image(image_list, is_horizontal=True):
@@ -7,7 +9,14 @@ def merge_image(image_list, is_horizontal=True):
         return np.hstack(image_list)
     return np.vstack(image_list)
 
-class RetrievalPlot(object):
+def get_rect(xy, w, h, color):
+    return Rectangle(
+        xy=xy, width=w, height=h,
+        facecolor='none', edgecolor=color, linewidth=1
+    )
+
+# will be deleted
+class RetrievalPlot_old(object):
     def __init__(self, n_examples, n_queries, top_k, colors,
                  image_size, patch_size,
                  n_scalars, n_lines, vmin=0, vmax=1):
@@ -167,3 +176,84 @@ class RetrievalPlot(object):
     def hold(self):
         plt.ioff()
         plt.show()
+
+
+# wil be deleted
+class RetrievalPlot(object):
+    def __init__(self, im_sz=(850, 1280), rect_sz=(204,204), k=5):
+        fig = plt.figure(figsize=(15, 8))
+        gs = gridspec.GridSpec(3, 4, figure=fig)
+        gs.update(left=0.03, right=0.99, bottom=0.11, top=0.99, wspace=0.01, hspace=0.03)
+
+        ax1 = plt.subplot(gs[:2,:2])
+        ax2 = plt.subplot(gs[0,2:])
+        ax3 = plt.subplot(gs[1,2:])
+        ax4 = plt.subplot(gs[2,:])
+
+        self.main_im = ax1.imshow(
+            np.zeros(im_sz, dtype=np.float32), vmin=0, vmax=1
+        )
+        ax1.axis('off')
+
+        self.top_im = ax2.imshow(
+            np.zeros((rect_sz[0]*2, rect_sz[1]*(k+1)), dtype=np.float32), vmin=0, vmax=1
+        )
+        ax2.axis('off')
+
+        self.bot_im = ax3.imshow(
+            np.zeros((rect_sz[0]*2, rect_sz[1]*(k+1)), dtype=np.float32), vmin=0, vmax=1
+        )
+        ax3.axis('off')
+
+        self.fig = fig
+        self.ax = [ax1, ax2, ax3, ax4]
+        self.im_sz = im_sz
+        self.rect_sz = rect_sz
+
+        #plt.ion()
+        plt.show()
+
+    def update_images(self):
+        pass
+
+    def update_scalars(self):
+        pass
+
+    def hold(self):
+        pass
+
+class ScalarPlot(object):
+    def __init__(self, n_lines, legends):
+        fig, ax = plt.subplots(1, 1)
+        lines = [ax.plot([],[], label=legends[i])[0] for i in range(n_lines)]
+        ax.set_autoscale_on(True)
+        ax.autoscale_view(True, True, True)
+
+        self.fig = fig
+        self.ax = ax
+        self.lines = lines
+
+        plt.legend(shadow=True, fancybox=True)
+        plt.ion()
+        plt.show()
+
+    def update(self, values):
+        if len(values) != len(self.lines):
+            raise ValueError("values must be length of {:d}.".format(len(self.lines)))
+
+        for line, v in zip(self.lines, values):
+            data = np.append(line.get_ydata(), v)
+            line.set_xdata(np.arange(len(data)))
+            line.set_ydata(data)
+
+        self.ax.relim()
+        self.ax.autoscale_view(True, True, True)
+
+        plt.draw()
+        plt.pause(0.1)
+
+    def hold(self):
+        plt.ioff()
+        plt.show()
+
+

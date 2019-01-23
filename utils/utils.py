@@ -1,10 +1,19 @@
 import warnings
 import os
 import numpy as np
-from skimage.transform import resize, downscale_local_mean
+from skimage.transform import downscale_local_mean
+from skimage.transform import resize as sk_resize
+from skimage.feature import blob_dog
+from skimage.filters import gaussian as gaussian_filter
 from skimage.io import imread
 from tqdm import tqdm
 from scipy.signal import convolve2d
+
+def resize(img, output_shape, **kwargs):
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        img = sk_resize(img, output_shape, **kwargs)
+    return img
 
 def downsample(image, out_shape, factors):
     with warnings.catch_warnings():
@@ -14,15 +23,18 @@ def downsample(image, out_shape, factors):
     return image
 
 def random_downsample(image, factors, p=0.7):
-    if np.random.random() < p:
-        blk = np.random.choice(factors)
-        if len(image.shape) == 3:
-            blk = (blk, blk, 1)
-            shape = image.shape[:3]
-        else:
-            blk = (blk, blk)
-            shape = image.shape
-        image = downsample(image, shape, blk)
+    blk = np.random.choice(factors)
+    if blk == 1:
+        return image
+
+    if len(image.shape) == 3:
+        blk = (blk, blk, 1)
+        shape = image.shape[:3]
+    else:
+        blk = (blk, blk)
+        shape = image.shape
+
+    image = downsample(image, shape, blk)
     return image
 
 def normalize(img):
@@ -81,5 +93,20 @@ def compute_local_std_map(im):
 
     stdmap = (stdmap - stdmap.min()) / stdmap.ptp()
     return stdmap
+
+def compute_DoG(im, sigmas, sigma_ratio):
+    all_dog = []
+
+    for sigma in sigmas:
+        s1 = gaussian_filter(im, sigma_ratio*sigma)
+        s2 = gaussian_filter(im, sigma)
+        all_dog.append(s1 - s2)
+
+    return all_dog
+
+def compute_DoG_blobs(im, min_sigma, max_sigma, sigma_ratio=1.6, threshold=0.3, overlap=0.5):
+    blobs = [
+        (x[0], x[1], x[2])
+    ]
 
 

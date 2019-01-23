@@ -1,3 +1,4 @@
+import os
 import tensorflow as tf
 import numpy as np
 
@@ -10,7 +11,9 @@ class TripletSpec(object):
             triplet_loss = None,
             regularization_loss = None,
             train_feed_dict = None,
-            test_feed_dict = None
+            test_feed_dict = None,
+            global_step = None,
+            net=None
     ):
         self.anchors = anchors
         self.positives = positives
@@ -23,10 +26,14 @@ class TripletSpec(object):
         self.train_op = train_op
         self.triplet_loss = triplet_loss
         self.regularization_loss = regularization_loss
+        self.global_step = global_step
 
         # feed_dict
         self.train_feed_dict = train_feed_dict
         self.test_feed_dict = test_feed_dict
+
+        # for the accesss to intermediate tensors
+        self.net = net
 
 class TripletOutputSpec(object):
     def __init__(self, features, x0, y0, images):
@@ -35,9 +42,17 @@ class TripletOutputSpec(object):
         self.y0 = y0
         self.images = images
 
+    def to_dict(self):
+        return {
+            'features': self.features,
+            'x0': self.x0,
+            'y0': self.y0,
+            'images': self.images
+        }
+
 class TripletEstimator(object):
     '''DNN estimator for triplet network'''
-    def __init__(self, spec: TripletSpec, restore=None):
+    def __init__(self, spec: TripletSpec, model_path=None, save_dir=None):
         self.spec = spec
 
         config = tf.ConfigProto(
@@ -49,12 +64,18 @@ class TripletEstimator(object):
         config.gpu_options.allow_growth = True
         self.sess = tf.Session(config=config)
 
+        self.saver = tf.train.Saver(max_to_keep=100)
+        if save_dir is not None:
+            self.save_dir = save_dir
+
         # initialize
         self.sess.run(tf.global_variables_initializer())
         self.sess.run(tf.local_variables_initializer())
 
-        if restore is not None:
-            raise NotImplementedError("restore the model from the latest checkpoint")
+        if model_path is not None:
+            ckpt = tf.train.get_checkpoint_state(model_path)
+            if ckpt and ckpt.model_checkpoint_path:
+                self.saver.restore(self.sess, ckpt.model_checkpoint_path)
 
     def train(self, dataset_initializer=None, log_every=0):
         if self.spec.train_op is None or self.spec.triplet_loss is None:
@@ -65,6 +86,7 @@ class TripletEstimator(object):
             train_step.append(self.spec.regularization_loss)
 
         step = 0
+        avg_triplet_loss = 0
         if dataset_initializer is not None:
             # initialize tensorflow data pipeline
             self.sess.run(dataset_initializer)
@@ -72,6 +94,7 @@ class TripletEstimator(object):
         try:
             while True:
                 outputs = self.sess.run(train_step, feed_dict=self.spec.train_feed_dict)
+                avg_triplet_loss += outputs[1]
                 step += 1
                 if log_every > 0 and step % log_every == 0:
                     tf.logging.info(
@@ -81,7 +104,11 @@ class TripletEstimator(object):
                             outputs[2] if len(outputs) > 2 else 0
                         ))
         except tf.errors.OutOfRangeError:
+            avg_triplet_loss /= step
+            tf.logging.info("Avg. triplet loss: {:.6f}".format(avg_triplet_loss))
             tf.logging.info("Exhausted all data in the dataset ({:d})!".format(step))
+
+        return avg_triplet_loss
 
     def run(self, dataset_initializer=None, collect_image=False):
         fetches = [
@@ -125,5 +152,9 @@ class TripletEstimator(object):
 
         return TripletOutputSpec(features, x0, y0, images)
 
-
+    def save(self, name, global_step=None):
+        if self.saver is not None:
+            save_path = os.path.join(self.save_dir, name)
+            save_path = self.saver.save(self.sess, save_path, global_step=global_step)
+            tf.logging.info('Save checkpoint @ {}'.format(save_path))
 

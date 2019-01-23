@@ -3,8 +3,11 @@ import logging
 import numpy as np
 
 class Param(object):
-    def __init__(self, log_dir=None):
+    def __init__(self, project_name='triplet_net', log_dir=None):
         if log_dir is not None:
+            if not os.path.exists(log_dir):
+                os.makedirs(log_dir)
+
             # get TF logger
             log = logging.getLogger('tensorflow')
             log.setLevel(logging.INFO)
@@ -17,7 +20,10 @@ class Param(object):
             fh.setLevel(logging.INFO)
             fh.setFormatter(formatter)
             log.addHandler(fh)
+
+        self.project_name = project_name
         self.log_dir = log_dir
+        self.save_every = 5
 
         self.data_dir = '/home/sungsooha/Desktop/Data/ftfy/data_hxnsem_selected'
         self.train_datasets = '../data/train_sem_dataset_208.npy'
@@ -43,27 +49,28 @@ class Param(object):
         '''
         self.n_img_per_iter = 10
         self.n_crops_per_img = 10
-        self.n_iter = 10
+        self.n_iter = 30
         self.batch_size = 16
 
         '''test dataset
         '''
-        self.stride = (208 // 4, 208 // 4)
+        self.stride = (208 // 16, 208 // 16)
         self.top_k = 5
         self.iou_threshold = 0.7
 
         '''triplet network parameters
         '''
-        self.n_features = 32
-        self.margin = 0.3
+        self.n_features = 128 # 32 (seems better with 128 or higher?)
+        #self.margin = 0.3 # to use hard-margin
+        self.margin = None # to use soft-margin
 
         '''train parameters
         '''
         self.n_epoch = 500
-        self.use_regularization = True
+        self.use_regularization = False # l2-norm
         self.learning_rate = 0.0001
         self.train_log_every = 50
 
         '''augmentation
         '''
-        self.down_factors = np.array([2, 4, 8])
+        self.down_factors = np.array([1, 2, 4, 8])

@@ -1,5 +1,6 @@
 import tensorflow as tf
 from network.model.ftfy_cnn import Net
+#from network.model.simple_cnn import Net
 from network.train import TripletSpec
 from network.loss.triplet import batch_offline_triplet_loss
 
@@ -20,6 +21,7 @@ def triplet_model_fn(
     triplet_loss = None
     regularization_loss = None
     train_op = None
+    global_step = None
     if mode is 'TRAIN':
         with tf.name_scope('loss'):
             triplet_loss = batch_offline_triplet_loss(a_feat, p_feat, n_feat, margin)
@@ -31,6 +33,9 @@ def triplet_model_fn(
 
         global_step = tf.train.create_global_step()
         optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate)
+
+       # optimizer = tf.train.AdagradOptimizer()
+
         grads_and_vars = optimizer.compute_gradients(loss)
         train_op = optimizer.apply_gradients(grads_and_vars, global_step=global_step)
         update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
@@ -47,5 +52,7 @@ def triplet_model_fn(
         triplet_loss=triplet_loss,
         regularization_loss=regularization_loss,
         train_feed_dict={is_training: True},
-        test_feed_dict={is_training: False}
+        test_feed_dict={is_training: False},
+        global_step=global_step,
+        net=build_model
     )
