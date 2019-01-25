@@ -1,3 +1,4 @@
+import operator
 import numpy as np
 from sklearn.metrics.pairwise import euclidean_distances
 
@@ -14,7 +15,56 @@ def calc_iou(ref_y, ref_x, other_ys, other_xs, rect_sz):
     area = rect_sz[0] * rect_sz[1]
     return np.clip(intersect_area / (2*area - intersect_area), 0., 1.)
 
+def fpr(labels, scores, recall_rate = 0.95):
+    """Error rate at 95% recall"""
+    # sort label-score tuples by the score in descending order
+    #indices = np.argsort(scores)[::-1]
+    #sorted_scores = scores[ind]
+    #sorted_labels = labels[ind]
+    sorted_scores = sorted(zip(labels, scores), key=operator.itemgetter(1), reverse=False)
+    # compute error rate
+    n_match = sum(1 for x in sorted_scores if x[0] == 1)
+    n_thresh = recall_rate * n_match
 
+    tp = 0
+    count = 0
+    for label, score in sorted_scores:
+        #print(score)
+        count += 1
+        if label == 1:
+            tp += 1
+        if tp >= n_thresh:
+            break
+
+    return float(count - tp) / count
+
+def retrieval_recall_K(features, labels, K:list, n_tries=100):
+    n_features = len(features)
+
+    p = np.ones(n_features, dtype=np.float32)
+    recall_rate = np.zeros(len(K), dtype=np.float32)
+    for _ in range(n_tries):
+        # pick a random query item
+        idx = np.random.choice(n_features, replace=False, p=p/p.sum())
+        p[idx] = 0
+        q_feat = features[idx]
+        q_label = labels[idx]
+
+        # compute distances
+        dist = np.sqrt(np.sum((features - q_feat)**2, axis=1))
+        sorted_ind = np.argsort(dist)[1:]
+
+        #print(dist[sorted_ind])
+
+        for idx, k in enumerate(K):
+            success = int(q_label in labels[sorted_ind[:k]])
+            recall_rate[idx] += success
+
+    recall_rate /= n_tries
+    return recall_rate
+
+
+# to be deleted
 class Evaluator_old(object):
     def __init__(self, data, patch_size):
         self.data = data

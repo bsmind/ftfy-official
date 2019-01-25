@@ -36,11 +36,19 @@ class TripletSpec(object):
         self.net = net
 
 class TripletOutputSpec(object):
-    def __init__(self, features, x0, y0, images):
+    def __init__(
+            self,
+            features,
+            x0=None, y0=None, images=None,
+            index=None, labels=None, scores=None
+    ):
         self.features = features
         self.x0 = x0
         self.y0 = y0
         self.images = images
+        self.index = index
+        self.labels = labels
+        self.scores = scores
 
     def to_dict(self):
         return {
@@ -111,6 +119,20 @@ class TripletEstimator(object):
         return avg_triplet_loss
 
     def run(self, dataset_initializer=None, collect_image=False):
+        """
+        get feature vectors
+            a_feat: feature vector
+            positives: (trick) x0 location
+            negatives: (trick) y0 location
+            anchors: input image, if collect_image is True
+
+        Args:
+            dataset_initializer:
+            collect_image:
+
+        Returns:
+
+        """
         fetches = [
             self.spec.a_feat,   # feature of input image
             self.spec.positives,# sampling location x0 and y0 (trick)
@@ -151,6 +173,61 @@ class TripletEstimator(object):
             images = np.concatenate(images, axis=0)
 
         return TripletOutputSpec(features, x0, y0, images)
+
+    def run_match(self, dataset_initializer=None):
+        """
+        get feature vectors for matching evaluation...
+            a_feat: feature vector for image 1
+            p_feat: feature vector for image 2
+            negatives: information of indices of image 1 and 2, and is_match
+                is_math is 1 if two images are matched; otherwise 0
+        """
+        fetches = [
+            self.spec.a_feat,  # feature of input image 1,
+            self.spec.p_feat,  # feature of input image 2,
+            self.spec.negatives, # information (idx_1, idx_2, is_match)
+        ]
+
+        if dataset_initializer is not None:
+            # initialize tensorflow data pipeline
+            self.sess.run(dataset_initializer)
+
+        all_feat_1, all_feat_2, all_idx_1, all_idx_2, all_is_match = [], [], [], [], []
+        all_dist = []
+        count = 0
+        try:
+            while True:
+                feat_1, feat_2, info = self.sess.run(fetches, feed_dict=self.spec.test_feed_dict)
+
+                count += len(feat_1)
+
+                # compute euclien distance
+                dist = np.sqrt(np.sum((feat_1 - feat_2)**2, axis=1))
+
+                # parsing info
+                idx_1 = info[:, 0, 0, 0].astype(np.int)
+                idx_2 = info[:, 1, 0, 0].astype(np.int)
+                is_match = info[:, 2, 0, 0].astype(np.int)
+
+                all_feat_1.append(feat_1)
+                all_feat_2.append(feat_2)
+                all_idx_1.append(idx_1)
+                all_idx_2.append(idx_2)
+                all_is_match.append(is_match)
+                all_dist.append(dist)
+
+        except tf.errors.OutOfRangeError:
+            tf.logging.info('Exhausted dataset for run_match: %d' % count)
+            pass
+
+        features = np.concatenate(all_feat_1 + all_feat_2, axis=0)
+        ind = np.concatenate(all_idx_1 + all_idx_2, axis=0)
+        all_is_match = np.concatenate(all_is_match, axis=0)
+        all_dist = np.concatenate(all_dist, axis=0)
+
+        return TripletOutputSpec(
+            features, index=ind, labels=all_is_match, scores=all_dist
+        )
 
     def save(self, name, global_step=None):
         if self.saver is not None:

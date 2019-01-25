@@ -223,37 +223,59 @@ class RetrievalPlot(object):
         pass
 
 class ScalarPlot(object):
-    def __init__(self, n_lines, legends):
-        fig, ax = plt.subplots(1, 1)
-        lines = [ax.plot([],[], label=legends[i])[0] for i in range(n_lines)]
-        ax.set_autoscale_on(True)
-        ax.autoscale_view(True, True, True)
+    def __init__(self, n_plots, n_lines:list, legends:list):
+        assert n_plots == len(n_lines), \
+            'Unmatched n_lines ({:d}) and n_plots ({:d})'.format(len(n_lines), n_plots)
+        assert n_plots == len(legends), \
+            'Unmatched n_lines ({:d}) and n_legends ({:d})'.format(len(n_lines), len(legends))
+
+        fig, ax = plt.subplots(1, n_plots)
+        if n_plots == 1:
+            ax = [ax]
+
+        line_handlers = []
+        for idx in range(n_plots):
+            _ax = ax[idx]
+            _n_lines = n_lines[idx]
+            _legends = legends[idx]
+
+            h = []
+            for i in range(_n_lines):
+                _h, = _ax.plot([], [], label=_legends[i])
+                h.append(_h)
+            line_handlers.append(h)
+
+            _ax.set_autoscale_on(True)
+            _ax.autoscale_view(True, True, True)
+            _ax.legend()
 
         self.fig = fig
         self.ax = ax
-        self.lines = lines
+        self.line_handlers = line_handlers
 
-        plt.legend(shadow=True, fancybox=True)
         plt.ion()
         plt.show()
 
-    def update(self, values):
-        if len(values) != len(self.lines):
-            raise ValueError("values must be length of {:d}.".format(len(self.lines)))
+    def update(self, idx, values):
+        line_handlers = self.line_handlers[idx]
+        ax = self.ax[idx]
+        if len(values) != len(line_handlers):
+            raise ValueError("values must be length of {:d}.".format(len(line_handlers)))
 
-        for line, v in zip(self.lines, values):
+        for line, v in zip(line_handlers, values):
             data = np.append(line.get_ydata(), v)
             line.set_xdata(np.arange(len(data)))
             line.set_ydata(data)
 
-        self.ax.relim()
-        self.ax.autoscale_view(True, True, True)
+        ax.relim()
+        ax.autoscale_view(True, True, True)
 
-        plt.draw()
-        plt.pause(0.1)
+        #plt.draw()
+        plt.pause(0.001)
 
     def hold(self):
         plt.ioff()
         plt.show()
+
 
 
