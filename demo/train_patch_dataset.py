@@ -1,21 +1,27 @@
 import tensorflow as tf
 import numpy as np
+import pickle
 
 from utils.Param import get_default_param
 from utils.viz import ScalarPlot
 from utils.eval import fpr, retrieval_recall_K
 from network.model_fn import triplet_model_fn
-from network.dataset.patchdata import input_fn
+from network.dataset.patchdata import input_fn as ubc_input_fn# for UBC
+from network.dataset.sem_patchdata import input_fn as sem_input_fn
 from network.train import TripletEstimator
 
-
+use_sem = True
+if use_sem:
+    input_fn = sem_input_fn
+else:
+    input_fn = ubc_input_fn
 
 # set seed for reproduction
 np.random.seed(2019)
 tf.set_random_seed(2019)
 
 # parameters
-param = get_default_param(mode='UBC', log_dir='../log/ubc_test')
+param = get_default_param(mode='AUSTIN', log_dir='../log/austin_campus')
 
 # data pipeline
 tf.logging.info("Preparing data pipeline ...")
@@ -62,16 +68,25 @@ test_data_sampler.load_dataset(
 )
 test_data_sampler.set_mode(False)
 
-#todo: compute mean, std and normalize train (test) dataset
-#train_data_sampler.generate_triplet(param.n_triplet_samples)
-mean, std = train_data_sampler.generate_stats()
-print('-- Mean: {:.3f}'.format(mean))
-print('-- Std : {:.3f}'.format(std))
+# compute stat
+tf.logging.info('Loading training stats: %s' % param.train_datasets)
+try:
+    file = open('../data/stats_%s.pkl' % param.train_datasets, 'r')
+    mean, std = pickle.load(file)
+except:
+    mean, std = train_data_sampler.generate_stats()
+    pickle.dump([mean, std], open('../data/stats_%s.pkl' % param.train_datasets, 'wb'))
+tf.logging.info('Mean: {:.5f}'.format(mean))
+tf.logging.info('Std : {:.5f}'.format(std))
 train_data_sampler.normalize_data(mean, std)
 test_data_sampler.normalize_data(mean, std)
 
-train_data_sampler.generate_triplet(param.n_triplet_samples)
-#train_data_sampler.generate_triplet(50000)
+tf.logging.info('Generating triplet samples:')
+#train_data_sampler.generate_triplet(param.n_triplet_samples)
+train_data_sampler.generate_triplet(5000)
+if use_sem:
+    train_data_sampler.generate_match_pairs(2000)
+    test_data_sampler.generate_match_pairs(2000) # for austin
 
 # build model
 tf.logging.info("Creating the model ...")

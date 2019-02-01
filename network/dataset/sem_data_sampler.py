@@ -1,6 +1,7 @@
 import numpy as np
 import tensorflow as tf
 from utils.utils import random_downsample, get_image_list, downsample
+from utils.iou_sampler import IoUSampler as ImageSamplerIoU
 
 def inrange(ref_min, ref_max, v):
     return ref_min <= v < ref_max
@@ -36,38 +37,6 @@ def show_triplet(image, a_xy, p_xy, n_xy, rect_sz):
         )
     )
     plt.show()
-
-class ImageSamplerIoU(object):
-    def __init__(self, patch_size, step=1):
-        self.patch_size = patch_size
-        self.step = step
-
-        self.max_dx = patch_size[1]//2 + 1
-        self.max_dy = patch_size[0]//2 + 1
-
-        x = np.arange(0, self.max_dx+1, step)
-        y = np.arange(0, self.max_dy+1, step)
-        self.iou_map = np.zeros((len(y), len(x)), dtype=np.float32)
-
-        S2 = 2 * patch_size[0] * patch_size[1]
-        ones = np.ones(self.patch_size, dtype=np.int32)
-        for dy in x:
-            for dx in y:
-                ones[:, :] = 1
-                ones[dy:, dx:] += 1
-                intersect_area = np.sum(ones==2)
-                self.iou_map[dy, dx] = intersect_area / (S2 - intersect_area)
-
-    def __call__(self, low=0.0, high=1.0, n=1):
-        lo_mask = low <= self.iou_map
-        hi_mask = self.iou_map < high
-        mask = np.multiply(lo_mask, hi_mask)
-        dy, dx = np.where(mask)
-
-        ind = np.random.choice(len(dy), n, replace=True)
-        dy = dy[ind]
-        dx = dx[ind]
-        return dx, dy
 
 class DataSamplerIoU(object):
     def __init__(

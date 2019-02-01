@@ -109,5 +109,26 @@ def get_default_param(mode, log_dir):
         p.loss_name = 'spreadout'
         p.optimizer_name = 'Momentum'
         return p
+    elif mode == 'AUSTIN':
+        p.data_dir = '/home/sungsooha/Desktop/Data/ftfy/austin'
+        p.train_datasets = 'campus_patch'
+        p.test_datasets = 'scene_patch'
+        p.patch_size = (64, 64)
+        p.n_channels = 1
+        p.patches_per_row = 13
+        p.patches_per_col = 8
+        p.batch_size = 128
+        p.n_features = 128
+        p.margin = None
+        p.n_epoch = 500
+        p.use_regularization = False
+        p.learning_rate = 0.01
+        p.train_log_every = 50
+        #p.cnn_name = 'spread'
+        p.cnn_name = 'ftfy'
+        #p.loss_name = 'triplet'#''spreadout'
+        p.loss_name = 'spreadout'
+        p.optimizer_name = 'Momentum'
+        return p
     else:
         return p
