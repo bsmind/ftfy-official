@@ -61,6 +61,7 @@ class Param(object):
         self.patches_per_row = 16
         self.patches_per_col = 16
         self.n_triplet_samples = 1000000
+        self.n_match_pairs = 20000
 
         '''test dataset
         '''
@@ -113,17 +114,18 @@ def get_default_param(mode, log_dir):
         p.data_dir = '/home/sungsooha/Desktop/Data/ftfy/austin'
         p.train_datasets = 'campus_patch'
         p.test_datasets = 'scene_patch'
-        p.patch_size = (64, 64)
+        p.patch_size = (128, 128)
         p.n_channels = 1
+        p.base_patch_size = (128, 128)
         p.patches_per_row = 13
-        p.patches_per_col = 8
-        p.batch_size = 128
+        p.patches_per_col = 6
+        p.batch_size = 16 # 128
         p.n_features = 128
         p.margin = None
-        p.n_epoch = 500
+        p.n_epoch = 100
         p.use_regularization = False
         p.learning_rate = 0.01
-        p.train_log_every = 50
+        p.train_log_every = 100
         #p.cnn_name = 'spread'
         p.cnn_name = 'ftfy'
         #p.loss_name = 'triplet'#''spreadout'

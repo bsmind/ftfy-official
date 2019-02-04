@@ -13,7 +13,7 @@ class PatchDataSampler(object):
             base_patch_size=(64, 64),
             patches_per_row=16,
             patches_per_col=16,
-            mode = True
+            mode = 0
     ):
         self.base_dir = base_dir
 
@@ -58,23 +58,39 @@ class PatchDataSampler(object):
                 files.append(os.path.join(dataset_dir, f))
         return sorted(files)
 
-    def _load_patches(self, dir_name, fnames, patch_size, n_channels):
-        patches_all = []
+    def _load_patches(self, dir_name, fnames, patch_size, n_channels, n_patches=None):
+        if n_patches is None:
+            patches_all = []
+            n_patches = np.inf
+        else:
+            patches_all = np.zeros((n_patches, *patch_size, n_channels), dtype=np.float32)
         #print(self.PATCHES_PER_COL, self.PATCHES_PER_ROW)
+        counter = 0
+        done = False
         for f in tqdm(fnames, desc='Loading dataset %s' % dir_name):
+            if done: break
             assert os.path.isfile(f), 'Not a file: %s' % f
             # todo: what if the maximum value is not 255?
             im = imread(f) / 255.
             patches_row = np.split(im, self.PATCHES_PER_ROW, axis=0)
             for row in patches_row:
+                if done: break
                 patches = np.split(row, self.PATCHES_PER_COL, axis=1)
                 for patch in patches:
+                    if done: break
                     if patch_size != self.PATCH_SIZE:
                         patch = resize(patch, patch_size)
                     patch_tensor = patch.reshape(*patch_size, n_channels)
-                    patches_all.append(patch_tensor)
-
-        return np.asarray(patches_all)
+                    if n_patches is None:
+                        patches_all.append(patch_tensor)
+                    else:
+                        patches_all[counter] = patch_tensor
+                    counter += 1
+                    if counter >= n_patches:
+                        done = True
+        if n_patches == np.inf:
+            patches_all = np.asarray(patches_all)
+        return patches_all
 
     def _load_labels(self, dir_name, fname='info.txt'):
         info_name = os.path.join(self.base_dir, dir_name, fname)
@@ -106,8 +122,8 @@ class PatchDataSampler(object):
             'The dataset directory does not exist: %s' % dir_name
 
         fnames = self._load_image_fnames(dir_name, ext)
-        patches = self._load_patches(dir_name, fnames, patch_size, n_channels)
         labels = self._load_labels(dir_name)
+        patches = self._load_patches(dir_name, fnames, patch_size, n_channels)
         matches = self._load_matches(dir_name)
 
         # initialize patch dataset
@@ -200,6 +216,15 @@ class PatchDataSampler(object):
     def train_next(self):
         if self.n_triplet_samples == 0 or self.sample_idx >= self.n_triplet_samples:
             self.sample_idx = 0
+
+            # shuffle
+            N = len(self.index_a)
+            ind = np.arange(N)
+            np.random.shuffle(ind)
+            self.index_a = self.index_a[ind]
+            self.index_p = self.index_p[ind]
+            self.index_n = self.index_n[ind]
+
             raise StopIteration
 
         idx_a = self.index_a[self.sample_idx]
@@ -232,7 +257,7 @@ class PatchDataSampler(object):
         return im_1, im_2, info
 
     def __next__(self):
-        if self.mode:
+        if self.mode == 0:
             return self.train_next()
         return self.test_next()
 

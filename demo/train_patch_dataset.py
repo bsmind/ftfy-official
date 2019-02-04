@@ -11,17 +11,20 @@ from network.dataset.sem_patchdata import input_fn as sem_input_fn
 from network.train import TripletEstimator
 
 use_sem = True
+log_dir = '../log/austin_campus'
 if use_sem:
     input_fn = sem_input_fn
 else:
     input_fn = ubc_input_fn
+
+
 
 # set seed for reproduction
 np.random.seed(2019)
 tf.set_random_seed(2019)
 
 # parameters
-param = get_default_param(mode='AUSTIN', log_dir='../log/austin_campus')
+param = get_default_param(mode='AUSTIN', log_dir=log_dir)
 
 # data pipeline
 tf.logging.info("Preparing data pipeline ...")
@@ -82,11 +85,11 @@ train_data_sampler.normalize_data(mean, std)
 test_data_sampler.normalize_data(mean, std)
 
 tf.logging.info('Generating triplet samples:')
-#train_data_sampler.generate_triplet(param.n_triplet_samples)
-train_data_sampler.generate_triplet(5000)
 if use_sem:
-    train_data_sampler.generate_match_pairs(2000)
-    test_data_sampler.generate_match_pairs(2000) # for austin
+    train_data_sampler.generate_match_pairs(param.n_match_pairs)
+    test_data_sampler.generate_match_pairs(param.n_match_pairs) # for austin
+train_data_sampler.generate_triplet(param.n_triplet_samples)
+#train_data_sampler.generate_triplet(50000)
 
 # build model
 tf.logging.info("Creating the model ...")
