@@ -65,7 +65,7 @@ class TripletEstimator(object):
 
         config = tf.ConfigProto(
             allow_soft_placement=True,
-            log_device_placement=False,
+            log_device_placement=True,
             intra_op_parallelism_threads=8,
             inter_op_parallelism_threads=0
         )
@@ -228,10 +228,69 @@ class TripletEstimator(object):
         return TripletOutputSpec(
             features, index=ind, labels=all_is_match, scores=all_dist
         )
+    
+    def run_retrieval(self, dataset_initializer=None):
+        fetches = [
+            self.spec.a_feat, # feature of input image
+            self.spec.negatives # information (is_query, label_idx, patch_idx)
+        ]
+        
+        if dataset_initializer is not None:
+            self.sess.run(dataset_initializer)
+        
+        all_feat, all_label_ind, all_is_query = [], [], []
+        count = 0
+        try:
+            while True:
+                feat, info = self.sess.run(fetches, feed_dict=self.spec.test_feed_dict)
+                count += len(feat)
+                
+                # parsing info
+                is_query = info[:, 0, 0, 0].astype(np.int)
+                label_idx = info[:, 1, 0, 0].astype(np.int)
+                
+                all_feat.append(feat)
+                all_label_ind.append(label_idx)
+                all_is_query.append(is_query)
+                
+        except tf.errors.OutOfRangeError:
+            tf.logging.info('Exhausted dataset for run_retrieval: %d' % count)
 
+        all_feat = np.concatenate(all_feat, axis=0)
+        all_label_ind = np.concatenate(all_label_ind, axis=0)
+        all_is_query = np.concatenate(all_is_query, axis=0)
+        return TripletOutputSpec(all_feat, index=all_label_ind, scores=all_is_query)
+            
     def save(self, name, global_step=None):
         if self.saver is not None:
             save_path = os.path.join(self.save_dir, name)
             save_path = self.saver.save(self.sess, save_path, global_step=global_step)
             tf.logging.info('Save checkpoint @ {}'.format(save_path))
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
 

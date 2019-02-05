@@ -38,7 +38,36 @@ def fpr(labels, scores, recall_rate = 0.95):
 
     return float(count - tp) / count
 
-def retrieval_recall_K(features, labels, K:list, n_tries=100):
+def retrieval_recall_K(features, labels, is_query, K:list):
+    recall_rate = np.zeros(len(K), dtype=np.float32)
+    query_ind, = np.nonzero(is_query)
+    n_queries = len(query_ind)
+    
+    counter = 0
+    
+    for q_idx in query_ind:
+        q_feat = features[q_idx]
+        q_label = labels[q_idx]
+        
+        dist = np.sqrt(np.sum((features - q_feat)**2, axis=1))
+        sorted_ind = np.argsort(dist)[1:]
+
+        print(q_label)
+        
+        for idx, k in enumerate(K):
+            r_labels = labels[sorted_ind[:k]]
+            success = int(q_label in labels[sorted_ind[:k]])
+            recall_rate[idx] += success
+            print(k, r_labels, success)
+            
+        counter += 1
+        if counter >= 5:
+            break
+            
+    recall_rate /= n_queries
+    return recall_rate
+
+def retrieval_recall_K_old(features, labels, K:list, n_tries=100):
     n_features = len(features)
 
     p = np.ones(n_features, dtype=np.float32)
