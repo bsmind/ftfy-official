@@ -38,30 +38,44 @@ def fpr(labels, scores, recall_rate = 0.95):
 
     return float(count - tp) / count
 
-def retrieval_recall_K(features, labels, K:list, n_tries=100):
-    n_features = len(features)
 
-    p = np.ones(n_features, dtype=np.float32)
+def retrieval_recall_K(features, labels, is_query, K: list, collect_top_5=False):
     recall_rate = np.zeros(len(K), dtype=np.float32)
-    for _ in range(n_tries):
-        # pick a random query item
-        idx = np.random.choice(n_features, replace=False, p=p/p.sum())
-        p[idx] = 0
-        q_feat = features[idx]
-        q_label = labels[idx]
+    query_ind, = np.nonzero(is_query)
+    n_queries = len(query_ind)
+    max_k = max(K)
 
-        # compute distances
-        dist = np.sqrt(np.sum((features - q_feat)**2, axis=1))
-        sorted_ind = np.argsort(dist)[1:]
+    top_5_collection = []
 
-        #print(dist[sorted_ind])
+    for q_idx in query_ind:
+        q_feat = features[q_idx]
+        q_label = labels[q_idx]
 
+        dist = np.sqrt(np.sum((features - q_feat) ** 2, axis=1))
+        sorted_ind = np.argsort(dist)
+        # exclude queried features
+        sorted_ind = sorted_ind[sorted_ind != q_idx]
+        sorted_ind = sorted_ind[:max_k]
+
+        r_labels = labels[sorted_ind]
+        first = np.where(r_labels == q_label)[0]
+
+        if collect_top_5:
+            success = 0 if len(first) == 0 else int(first[0] < 5)
+            top_5_collection.append(
+                [q_idx] + sorted_ind[:5].tolist() + [success]
+            )
+
+        if len(first) == 0:
+            continue
+
+        first = first[0]
         for idx, k in enumerate(K):
-            success = int(q_label in labels[sorted_ind[:k]])
-            recall_rate[idx] += success
+            recall_rate[idx] += int(first < k)
 
-    recall_rate /= n_tries
-    return recall_rate
+    recall_rate /= n_queries
+    top_5_collection = np.asarray(top_5_collection, dtype=np.int32)
+    return recall_rate, top_5_collection
 
 
 # to be deleted

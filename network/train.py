@@ -60,7 +60,7 @@ class TripletOutputSpec(object):
 
 class TripletEstimator(object):
     '''DNN estimator for triplet network'''
-    def __init__(self, spec: TripletSpec, model_path=None, save_dir=None):
+    def __init__(self, spec: TripletSpec, model_path=None, epoch=None, save_dir=None):
         self.spec = spec
 
         config = tf.ConfigProto(
@@ -82,8 +82,14 @@ class TripletEstimator(object):
 
         if model_path is not None:
             ckpt = tf.train.get_checkpoint_state(model_path)
-            if ckpt and ckpt.model_checkpoint_path:
-                self.saver.restore(self.sess, ckpt.model_checkpoint_path)
+            if ckpt is None:
+                raise ValueError('Cannot find a checkpoint: %s' % model_path)
+            model_checkpoint_path = ckpt.model_checkpoint_path
+            if epoch is not None:
+                all_model_checkpoint_paths = ckpt.all_model_checkpoint_path
+                if 0 <= epoch and epoch < len(all_model_checkpoint_paths):
+                    model_checkpoint_path = all_model_checkpoint_paths[epoch]
+            self.saver.restore(self.sess, model_checkpoint_path)
 
     def train(self, dataset_initializer=None, log_every=0):
         if self.spec.train_op is None or self.spec.triplet_loss is None:
@@ -228,6 +234,43 @@ class TripletEstimator(object):
         return TripletOutputSpec(
             features, index=ind, labels=all_is_match, scores=all_dist
         )
+
+    def run_retrieval(self, dataset_initializer=None):
+        fetches = [
+            self.spec.a_feat,  # feature of input image
+            self.spec.negatives  # information (is_query, label_idx, patch_idx)
+        ]
+
+        if dataset_initializer is not None:
+            self.sess.run(dataset_initializer)
+
+        all_feat, all_label_ind, all_is_query, all_patch_ind = [], [], [], []
+        count = 0
+        try:
+            while True:
+                feat, info = self.sess.run(fetches, feed_dict=self.spec.test_feed_dict)
+                count += len(feat)
+
+                # parsing info
+                is_query = info[:, 0, 0, 0].astype(np.int)
+                label_idx = info[:, 1, 0, 0].astype(np.int)
+                # patch_idx = info[:, 2, 0, 0].astype(np.int)
+
+                all_feat.append(feat)
+                all_label_ind.append(label_idx)
+                all_is_query.append(is_query)
+                # all_patch_ind.append(all_patch_ind)
+
+        except tf.errors.OutOfRangeError:
+            tf.logging.info('Exhausted dataset for run_retrieval: %d' % count)
+
+        all_feat = np.concatenate(all_feat, axis=0)
+        all_label_ind = np.concatenate(all_label_ind, axis=0)
+        all_is_query = np.concatenate(all_is_query, axis=0)
+        # all_patch_ind = np.concatenate(all_patch_ind, axis=0)
+        return TripletOutputSpec(all_feat,
+                                 index=all_label_ind,
+                                 scores=all_is_query)
 
     def save(self, name, global_step=None):
         if self.saver is not None:
