@@ -38,7 +38,6 @@ def fpr(labels, scores, recall_rate = 0.95):
 
     return float(count - tp) / count
 
-
 def retrieval_recall_K(features, labels, is_query, K: list, collect_top_5=False):
     recall_rate = np.zeros(len(K), dtype=np.float32)
     query_ind, = np.nonzero(is_query)
@@ -76,6 +75,3 @@ def retrieval_recall_K(features, labels, is_query, K: list, collect_top_5=False)
     recall_rate /= n_queries
     top_5_collection = np.asarray(top_5_collection, dtype=np.int32)
     return recall_rate, top_5_collection
-
-
-

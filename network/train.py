@@ -267,14 +267,42 @@ class TripletEstimator(object):
         all_feat = np.concatenate(all_feat, axis=0)
         all_label_ind = np.concatenate(all_label_ind, axis=0)
         all_is_query = np.concatenate(all_is_query, axis=0)
+
         # all_patch_ind = np.concatenate(all_patch_ind, axis=0)
         return TripletOutputSpec(all_feat,
                                  index=all_label_ind,
                                  scores=all_is_query)
-
+      
     def save(self, name, global_step=None):
         if self.saver is not None:
             save_path = os.path.join(self.save_dir, name)
             save_path = self.saver.save(self.sess, save_path, global_step=global_step)
             tf.logging.info('Save checkpoint @ {}'.format(save_path))
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
 
