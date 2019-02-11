@@ -5,6 +5,9 @@ tf.logging.set_verbosity(tf.logging.INFO)
 
 from skimage.io import imread
 from sklearn.manifold import TSNE
+
+from sklearn.neighbors import NearestNeighbors
+
 from tqdm import tqdm
 
 import matplotlib.pyplot as plt
@@ -85,37 +88,6 @@ def discrete_cmap(N, base_cmap=None):
     cmap_name = base.name + str(N)
     return base.from_list(cmap_name, color_list, N)
 
-def get_viz_scheme(ulabels):
-    '''Get visualization scheme
-    label format: {gid}_{iou}_{scale}
-    color: gid
-    shape: iou (4)
-    size: scale (6)
-    '''
-    scheme = dict()
-    color_scheme = dict()
-    shape_scheme = ["o", "^", "s", "X"] # [circle, triangle, square, x]
-
-    base_size = 10
-    size_scheme = [base_size*2**n for n in range(6)]
-    size_scheme.reverse()
-
-    for label in ulabels:
-        gid, iou, scale = label.split('_')
-        gid = int(gid)
-        iou = int(iou)
-        scale = int(scale)
-
-        if color_scheme.get(gid) is None:
-            color_scheme[gid] = gid
-
-        scheme[label] = (
-            color_scheme[gid],
-            size_scheme[scale],
-            shape_scheme[iou]
-        )
-
-    return scheme
 
 if __name__ == '__main__':
     # for reproduction
@@ -123,12 +95,12 @@ if __name__ == '__main__':
 
     base_dir = '/home/sungsooha/Desktop/Data/ftfy/austin'
     data_dir = 'campus_patch'
-    model_path = './log/campus'
-    max_n_groups = 1000 #10
+    model_path = './log/campus/ckpt'
+    max_n_groups = 10 #10
 
     net = get_network(model_path)
 
-    patches, labels, grouped_patches = load_patches(base_dir, data_dir, max_n_groups=100)
+    patches, labels, grouped_patches = load_patches(base_dir, data_dir, max_n_groups=max_n_groups)
     features = net.get_feature(patches)
 
     print('patches: ', patches.shape)
@@ -149,6 +121,11 @@ if __name__ == '__main__':
         random_state=0
     )
     t_features = tsne.fit_transform(features)
+
+    # ------------------------------------------------------------------------
+    # NN
+    # ------------------------------------------------------------------------
+    nbrs = NearestNeighbors(n_neighbors=1, algorithm='ball_tree').fit(t_features)
 
     # ------------------------------------------------------------------------
     # scatter plot
@@ -191,7 +168,7 @@ if __name__ == '__main__':
         )
         h.set_clim(-0.5, n_groups - 0.5)
 
-    # for highlighted points
+    # for highlighted groups
     highlighted_ind = colors == 0
     highlighted_handlers = []
     for shape in shape_scheme:
@@ -207,6 +184,14 @@ if __name__ == '__main__':
         h.set_clim(-0.5, n_groups - 0.5)
         highlighted_handlers.append(h)
 
+    # for highlighted point
+    # hh_idx = 0
+    # hh = ax.scatter(
+    #     [t_features[hh_idx, 0]], [t_features[hh_idx, 1]],
+    #     s=[sizes[hh_idx]], c=[colors[hh_idx]],
+    #     marker=shapes[hh_idx], cmap=cmap,
+    #     edgecolors='blue'
+    # )
 
 
     iou_legend = [
@@ -264,9 +249,29 @@ if __name__ == '__main__':
                 handler._sizes = sizes[ind]
                 handler.set_array(colors[ind])
             fig.canvas.draw()
+    #
+    # def on_btn_press(event):
+    #     if event.inaxes != ax:
+    #         return
+    #     dist, ind = nbrs.kneighbors([[event.xdata, event.ydata]])
+    #     dist = dist[0][0]
+    #     ind = ind[0][0]
+    #     if dist < 0.1:
+    #         global hh_idx
+    #         hh_idx = ind
+    #         hh.set_offsets([t_features[hh_idx, :]])
+    #         hh._sizes = [sizes[hh_idx]]
+    #         hh.set_array(np.array([colors[hh_idx]]))
+    #         fig.canvas.draw()
+
+
+    # def on_btn_release(event):
+    #     pass
 
     cbar.ax.set_picker(5)
     fig.canvas.mpl_connect('pick_event', on_pick)
+    # fig.canvas.mpl_connect('button_press_event', on_btn_press)
+    # fig.canvas.mpl_connect('button_release_event', on_btn_release)
 
     plt.show()
 
