@@ -256,16 +256,21 @@ class AlignFrameNN(AlignFrame):
 
 interval = 0.05
 data_dir = '/home/sungsooha/Desktop/Data/ftfy/align'
-filename = 'ni_xrf_raw_normalized.tif'
-model_path = './log/ms_softmargin_f128_lr'
+#filename = 'ni_xrf_raw_normalized.tif'
+filename = 'tomo_wo3_raw.tif'
+#model_path = './log/ms_softmargin_f128_lr'
 
 frames = load_data(data_dir, filename)
+print(frames.shape)
+
+show_frames(frames, 0.1)
+
 frames = normalize_frames(frames)
 frames_before = frames.copy()
 frames_l2 = frames.copy()
-frames_nn = frames.copy()
+#frames_nn = frames.copy()
 
-net = TripletNet(model_path)
+#net = TripletNet(model_path)
 
 
 x0 = 25
@@ -273,17 +278,17 @@ y0 = 5
 w =  100
 h = 130
 frame_mgr_l2 = AlignFrame(x0, y0, w, h)
-frame_mgr_nn = AlignFrameNN(x0, y0, w, h, net)
+#frame_mgr_nn = AlignFrameNN(x0, y0, w, h, net)
 for frame_idx in range(len(frames)):
     if frame_idx == 0:
         continue
     print("Frame index: {:d}".format(frame_idx))
     frames_l2[frame_idx] = frame_mgr_l2(frames_l2[frame_idx-1], frames_l2[frame_idx])
-    frames_nn[frame_idx] = frame_mgr_nn(frames_nn[frame_idx-1], frames_nn[frame_idx])
+    #frames_nn[frame_idx] = frame_mgr_nn(frames_nn[frame_idx-1], frames_nn[frame_idx])
 
 # save result
 # imsave(os.path.join(data_dir, 'frames_l2.tif'), frames_l2)
 # imsave(os.path.join(data_dir, 'frames_nn.tif'), frames_nn)
 
-show_multi_frames([frames_before, frames_l2, frames_nn], interval=interval)
+show_multi_frames([frames_before, frames_l2], interval=interval)
 

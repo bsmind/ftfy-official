@@ -48,6 +48,7 @@ class Net(BaseNet):
             net = tf.layers.conv2d(net,  64, 3, 1, name='conv2', **conv_args)
             net = tf.layers.batch_normalization(net, **bn_args, name=bn_prefix + '_bn2')
             net = tf.nn.leaky_relu(net)
+
             net = tf.layers.average_pooling2d(net, **pool_args)
             if not self.created:
                 self.conv2 = tf.identity(net)
@@ -68,6 +69,7 @@ class Net(BaseNet):
             net = tf.layers.conv2d(net, 128, 3, 1, name='conv5', **conv_args)
             net = tf.layers.batch_normalization(net, **bn_args, name=bn_prefix + '_bn5')
             net = tf.nn.leaky_relu(net)
+
             net = tf.layers.average_pooling2d(net, **pool_args)
             net_4 = tf.identity(net)
             if not self.created:
@@ -89,6 +91,7 @@ class Net(BaseNet):
             net = tf.layers.conv2d(net, 256, 3, 1, name='conv8', **conv_args)
             net = tf.layers.batch_normalization(net, **bn_args, name=bn_prefix + '_bn8')
             net = tf.nn.leaky_relu(net)
+
             net = tf.layers.average_pooling2d(net, **pool_args)
             net_2 = tf.identity(net)
             if not self.created:

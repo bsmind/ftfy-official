@@ -5,6 +5,7 @@ class BaseNet(object):
     def __init__(self, name="BaseNet"):
         self.name = name
 
+
         # wrapping network into a template. It is useful for parameters sharing
         #self.template = tf.make_template(name, self.call, False)
 

@@ -94,19 +94,5 @@ def compute_local_std_map(im):
     stdmap = (stdmap - stdmap.min()) / stdmap.ptp()
     return stdmap
 
-def compute_DoG(im, sigmas, sigma_ratio):
-    all_dog = []
-
-    for sigma in sigmas:
-        s1 = gaussian_filter(im, sigma_ratio*sigma)
-        s2 = gaussian_filter(im, sigma)
-        all_dog.append(s1 - s2)
-
-    return all_dog
-
-def compute_DoG_blobs(im, min_sigma, max_sigma, sigma_ratio=1.6, threshold=0.3, overlap=0.5):
-    blobs = [
-        (x[0], x[1], x[2])
-    ]
 
 

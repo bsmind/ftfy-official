@@ -4,3 +4,5 @@ __pycache__
 log
 arch
 app/*.npy
+data
+Data
