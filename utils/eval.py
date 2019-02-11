@@ -38,31 +38,40 @@ def fpr(labels, scores, recall_rate = 0.95):
 
     return float(count - tp) / count
 
-def retrieval_recall_K(features, labels, is_query, K:list):
+def retrieval_recall_K(features, labels, is_query, K: list, collect_top_5=False):
     recall_rate = np.zeros(len(K), dtype=np.float32)
     query_ind, = np.nonzero(is_query)
     n_queries = len(query_ind)
     max_k = max(K)
-    
+
+    top_5_collection = []
+
     for q_idx in query_ind:
         q_feat = features[q_idx]
         q_label = labels[q_idx]
-        
-        dist = np.sqrt(np.sum((features - q_feat)**2, axis=1))
+
+        dist = np.sqrt(np.sum((features - q_feat) ** 2, axis=1))
         sorted_ind = np.argsort(dist)
         # exclude queried features
-        sorted_ind = sorted_ind[sorted_ind != q_idx]            
+        sorted_ind = sorted_ind[sorted_ind != q_idx]
         sorted_ind = sorted_ind[:max_k]
-        
+
         r_labels = labels[sorted_ind]
         first = np.where(r_labels == q_label)[0]
+
+        if collect_top_5:
+            success = 0 if len(first) == 0 else int(first[0] < 5)
+            top_5_collection.append(
+                [q_idx] + sorted_ind[:5].tolist() + [success]
+            )
+
         if len(first) == 0:
             continue
-            
+
         first = first[0]
         for idx, k in enumerate(K):
             recall_rate[idx] += int(first < k)
-            
-    recall_rate /= n_queries
-    return recall_rate
 
+    recall_rate /= n_queries
+    top_5_collection = np.asarray(top_5_collection, dtype=np.int32)
+    return recall_rate, top_5_collection

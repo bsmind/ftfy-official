@@ -27,6 +27,10 @@ class IoUPatchDataSampler(PatchDataSampler):
     def set_n_matched_pairs(self, n):
         self.n_matches = min(2*n, self.max_n_matched_pairs)
 
+    def get_patch_by_retrieval_idx(self, idx):
+        patch_idx = self.data['retrieval'][idx][0]
+        return self.data['patches'][patch_idx], patch_idx
+
     def _load_triplet_samples(self, dir_name, fname='triplet_1000000.txt'):
         triplet_fname = os.path.join(self.base_dir, dir_name, fname)
         assert os.path.isfile(triplet_fname), 'Cannot find %s!' % fname
