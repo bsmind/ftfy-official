@@ -3,10 +3,8 @@ import numpy as np
 
 from skimage.io import imread, imsave
 
-from utils.data import get_filenames, get_multiscale, get_interpolator
-
+from utils.data import get_filenames
 from utils.sem_data import PatchExtractor, PatchDataManager
-
 import matplotlib.pyplot as plt
 from matplotlib.widgets import RectangleSelector
 from matplotlib.patches import Rectangle
@@ -85,15 +83,18 @@ def generate_info(fname, pid, gid, iouid, cx, cy, side, down_factor):
         fname, pid, gid, iouid, cx, cy, side, down_factor
     )
 
+
+
 if __name__ == '__main__':
     base_dir = '/home/sungsooha/Desktop/Data/ftfy/sem'
-    data_dirs = ['set_{:03d}'.format(i+1) for i in range(66)]
-    output_dir = os.path.join(base_dir, 'patches')
+    data_dir = 'train/set_065'
+    output_dir = os.path.join(base_dir, data_dir, 'patches')
     do_measure_px_size = True
+    has_keypoint = True
 
     down_factors = [1, 2, 4, 6, 8, 10]
     iou_ranges = [(0.7, 1.0), (0.5, 0.7), (0.3, 0.5)]
-    n_iou_samples = 2
+    n_iou_samples = 3
 
     patch_size = 128
     min_patch_size = 13
@@ -104,7 +105,8 @@ if __name__ == '__main__':
 
     # patch data manager
     patchdata_mgr = PatchDataManager(
-        output_dir, patches_per_col=10, patches_per_row=10
+        output_dir, patches_per_col=10, patches_per_row=10,
+        info_fname='info.txt'
     )
 
     patch_counter = 0
@@ -121,11 +123,10 @@ if __name__ == '__main__':
     # load pixel size information
     # ------------------------------------------------------------------------
     filenames = []
-    for data_dir in data_dirs:
-        filenames += get_filenames(os.path.join(base_dir, data_dir), 'tif')
+    filenames += get_filenames(os.path.join(base_dir, data_dir), 'tif')
     n_filenames = len(filenames)
     assert n_filenames > 0, 'No files to process in the directory: {:s}.'.format(base_dir)
-
+    filenames = sorted(filenames)
     # ------------------------------------------------------------------------
     # Load all image in the data_dir
     # ------------------------------------------------------------------------
@@ -138,6 +139,7 @@ if __name__ == '__main__':
     #     im = imread(fname, as_gray=True)
     #     im = im[:-110, :] # to remove scale bar at the bottom of SEM image
     #     images.append(im)
+
 
     # ------------------------------------------------------------------------
     # Matplotlib GUI for patch extraction
@@ -220,13 +222,14 @@ if __name__ == '__main__':
         plt.pause(0.001)
 
     def on_next_image():
-        global image_idx
+        global image_idx, image
         image_idx = image_idx + 1
         if image_idx == len(filenames):
             patchdata_mgr.dump()
             print('end of images, terminate!')
             exit()
-        main_h.set_data(load_image(filenames[image_idx]))
+        image = load_image(filenames[image_idx])
+        main_h.set_data(image)
         main_ax.set_title('{:d}/{:d}'.format(image_idx + 1, len(filenames)))
 
         [p.remove() for p in reversed(main_ax.patches)]

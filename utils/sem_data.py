@@ -4,6 +4,7 @@ from skimage.io import imsave
 from utils.data import get_multiscale, get_interpolator, get_filenames
 from utils.iou_sampler import IoUSampler
 
+from tqdm import tqdm
 
 def get_ms_patches(im_f, down_factors, orig_cx, orig_cy, orig_side, patch_size):
     patches = []
@@ -29,7 +30,7 @@ class PatchExtractor(object):
         self.min_patch_size = min_patch_size
         self.down_factors = down_factors
         self.iou_ranges = iou_ranges
-        self.iou_sampler = IoUSampler(patch_size)
+        #self.iou_sampler = IoUSampler(patch_size)
 
         self.box = None        # int, (cx, cy, side)
         self.patches = []      # np.ndarray
@@ -55,7 +56,6 @@ class PatchExtractor(object):
 
     def get_patches_iou_with_info(self):
         return self.patches_iou, self.actual_down_factors, self.boxes_iou
-
 
     def extract_ms_patches(self, im, box, with_iou=0):
         """
@@ -83,11 +83,14 @@ class PatchExtractor(object):
         patches = get_ms_patches(im_f, down_factors,
                                  orig_cx, orig_cy, orig_side, self.patch_size)
 
+        # todo: how to use single iou_sampler to support various sizes
+        iou_sampler = IoUSampler((orig_side, orig_side))
+
         patches_iou = []
         boxes_iou = []
         if with_iou > 0 and self.iou_ranges is not None:
             for (lo, hi) in self.iou_ranges:
-                for ox, oy in zip(*self.iou_sampler(lo, hi, n=with_iou)):
+                for ox, oy in zip(*iou_sampler(lo, hi, n=with_iou)):
                     patches_iou += get_ms_patches(im_f, down_factors,
                                         orig_cx+ox, orig_cy+oy, orig_side, self.patch_size)
                     boxes_iou.append((orig_cx+ox, orig_cy+oy, orig_side))
@@ -102,7 +105,8 @@ class PatchExtractor(object):
 
 class PatchDataManager(object):
     def __init__(self, output_dir,
-                 patches_per_col=10, patches_per_row=10):
+                 patches_per_col=10, patches_per_row=10,
+                 info_fname='info.txt'):
         if not os.path.exists(output_dir):
             os.makedirs(output_dir)
 
@@ -117,7 +121,7 @@ class PatchDataManager(object):
         fnames = get_filenames(output_dir, 'bmp')
         self.counter = len(fnames)
 
-        self.file = open(os.path.join(self.output_dir, 'info.txt'), 'w')
+        self.file = open(os.path.join(self.output_dir, info_fname), 'w')
 
     def _save_image(self, im):
         im *= 255
@@ -166,6 +170,8 @@ class PatchDataManager(object):
             im = np.vstack(self.patches_row)
             self._save_image(im)
             self.patches_row = []
+
+
 
 
 

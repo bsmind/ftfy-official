@@ -163,37 +163,7 @@ def input_fn(
     return dataset, data_sampler
 
 
-if __name__ == '__main__':
-    import matplotlib.pyplot as plt
 
-    base_dir = '/home/sungsooha/Desktop/Data/ftfy/austin'
-    patch_dir = 'scene_patch' #'campus_patch'
-
-    mode = False
-
-    sampler = IoUPatchDataSampler(base_dir)
-    sampler.load_dataset(patch_dir)
-
-    sampler.set_mode(mode)
-    if mode:
-        sampler.generate_triplet(50)
-    else:
-        sampler.generate_match_pairs(10)
-
-    for a, p, n in sampler:
-        fig, ax = plt.subplots(1, 3)
-        ax[0].imshow(np.squeeze(a))
-        ax[1].imshow(np.squeeze(p))
-        if mode:
-            ax[2].imshow(np.squeeze(n))
-        else:
-            idx_1 = int(n[0,0,0])
-            idx_2 = int(n[1,0,0])
-            is_match = int(n[2,0,0])
-            print('{:d}, {:d}, {:s}'.format(
-                idx_1, idx_2, 'Y' if is_match == 1 else 'N'
-            ))
-        plt.show()
 
 
 
