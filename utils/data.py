@@ -9,10 +9,12 @@ from scipy.interpolate import interp2d
 from utils.iou_sampler import IoUSampler
 from tqdm import tqdm
 
-def get_filenames(path):
+
+
+def get_filenames(path, ext='jpg'):
     fnames = []
     for f in os.listdir(path):
-        if f.endswith('jpg'):
+        if f.endswith(ext):
             fnames.append(os.path.join(path, f))
     return fnames
 
@@ -24,7 +26,7 @@ def get_multiscale(im, down_factors:list, debug=False):
             ms.append(rescale(im, 1/factor))
     if debug:
         for i in range(len(down_factors)):
-            print('down: {:d}, shape: {}'.format(
+            print('down: {}, shape: {}'.format(
                 down_factors[i], ms[i].shape
             ))
     return ms
@@ -38,11 +40,12 @@ def get_corners(im, ox, oy, min_distance):
     corners = corners[~np.isnan(corners).any(axis=1)]
     return corners
 
-def get_interpolator(im):
+def get_interpolator(im, fill_value=0):
+    """values outside of input image domain will be extrapolated if fill_value is None"""
     h, w = im.shape
     x = np.arange(0, w, 1)
     y = np.arange(0, h, 1)
-    return interp2d(x, y, im)
+    return interp2d(x, y, im, fill_value=fill_value)
 
 def get_ms_patches(im_f, x, y, down_factors, psz_low, psz_final):
     assert len(im_f) == len(down_factors), 'Unmatched number of multiscales.'

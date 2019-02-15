@@ -7,6 +7,8 @@ class IoUSampler(object):
     rectange in the same size.
     '''
     def __init__(self, patch_size, step=1):
+        if isinstance(patch_size, int):
+            patch_size = (patch_size, patch_size)
         self.patch_size = patch_size
         self.step = step
 
@@ -39,3 +41,6 @@ class IoUSampler(object):
         dy = dy[ind] - self.max_dx
         dx = dx[ind] - self.max_dy
         return dx, dy
+
+
+
