@@ -65,7 +65,7 @@ class TripletEstimator(object):
 
         config = tf.ConfigProto(
             allow_soft_placement=True,
-            log_device_placement=True,
+            log_device_placement=False,
             intra_op_parallelism_threads=8,
             inter_op_parallelism_threads=0
         )
@@ -238,7 +238,7 @@ class TripletEstimator(object):
         if dataset_initializer is not None:
             self.sess.run(dataset_initializer)
         
-        all_feat, all_label_ind, all_is_query = [], [], []
+        all_feat, all_label_ind, all_is_query, all_patch_ind = [], [], [], []
         count = 0
         try:
             while True:
@@ -248,10 +248,12 @@ class TripletEstimator(object):
                 # parsing info
                 is_query = info[:, 0, 0, 0].astype(np.int)
                 label_idx = info[:, 1, 0, 0].astype(np.int)
+                #patch_idx = info[:, 2, 0, 0].astype(np.int)
                 
                 all_feat.append(feat)
                 all_label_ind.append(label_idx)
                 all_is_query.append(is_query)
+                #all_patch_ind.append(all_patch_ind)
                 
         except tf.errors.OutOfRangeError:
             tf.logging.info('Exhausted dataset for run_retrieval: %d' % count)
@@ -259,7 +261,10 @@ class TripletEstimator(object):
         all_feat = np.concatenate(all_feat, axis=0)
         all_label_ind = np.concatenate(all_label_ind, axis=0)
         all_is_query = np.concatenate(all_is_query, axis=0)
-        return TripletOutputSpec(all_feat, index=all_label_ind, scores=all_is_query)
+        #all_patch_ind = np.concatenate(all_patch_ind, axis=0)
+        return TripletOutputSpec(all_feat, 
+                                 index=all_label_ind, 
+                                 scores=all_is_query)
             
     def save(self, name, global_step=None):
         if self.saver is not None:
