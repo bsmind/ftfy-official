@@ -3,7 +3,7 @@ import logging
 import numpy as np
 
 class Param(object):
-    def __init__(self, project_name='triplet_net', log_dir=None):
+    def __init__(self, project_name='triplet-net', log_dir=None):
         if log_dir is not None:
             if not os.path.exists(log_dir):
                 os.makedirs(log_dir)
@@ -24,6 +24,7 @@ class Param(object):
         self.project_name = project_name
         self.log_dir = log_dir
         self.save_every = 5
+        self.model_path = None
 
         # data
         self.data_dir = '/home/sungsooha/Desktop/Data/ftfy/data_hxnsem_selected'

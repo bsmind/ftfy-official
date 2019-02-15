@@ -64,12 +64,14 @@ def triplet_model_fn(
         name='triplet-net'
 ):
     assert mode in MODE, 'Unknown mode: %s' % mode
-    assert loss_name in LOSS, 'Unknown loss: %s' % loss_name
-    assert optimizer_name in OPTIMIZER, 'Unknown optimizer: %s' % optimizer_name
     assert cnn_name in CNN, 'Unknown cnn: %s' % cnn_name
     tf.logging.info('CNN: %s' % cnn_name)
-    tf.logging.info('LOSS: %s' % loss_name)
-    tf.logging.info('OPTIMIZER: %s' % optimizer_name)
+
+    if mode == 'TRAIN':
+        assert loss_name in LOSS, 'Unknown loss: %s' % loss_name
+        assert optimizer_name in OPTIMIZER, 'Unknown optimizer: %s' % optimizer_name
+        tf.logging.info('LOSS: %s' % loss_name)
+        tf.logging.info('OPTIMIZER: %s' % optimizer_name)
 
     is_training = tf.placeholder(tf.bool, (), "is_training")
 
