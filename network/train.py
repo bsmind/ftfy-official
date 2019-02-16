@@ -180,7 +180,7 @@ class TripletEstimator(object):
 
         return TripletOutputSpec(features, x0, y0, images)
 
-    def run_match(self, dataset_initializer=None):
+    def run_match(self, dataset_initializer=None, info_parser=None):
         """
         get feature vectors for matching evaluation...
             a_feat: feature vector for image 1
