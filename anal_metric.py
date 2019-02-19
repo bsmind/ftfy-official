@@ -9,6 +9,7 @@ from utils.eval import fpr, retrieval_recall_K
 
 from network.model_fn import triplet_model_fn
 from network.dataset.sem_patchdata import input_fn
+from network.dataset.sem_patchdata_ext import input_fn as sem_input_fn
 from network.train import TripletEstimator
 
 from skimage.io import imsave
@@ -18,24 +19,43 @@ np.random.seed(2019)
 tf.set_random_seed(2019)
 
 param = get_default_param(mode='AUSTIN', log_dir=None)
-param.log_dir = './log/campus'
+param.log_dir = './log/human'
 param.data_dir = '/home/sungsooha/Desktop/Data/ftfy/austin'
-param.train_datasets = 'campus_patch'
-param.test_datasets = 'human_patch' #'human_patch'
-param.batch_size = 128
-param.model_path = './log/campus/ckpt'
 
-do_test_fpr = False
-do_test_retrieval = False
+#sem_data_dir = './Data/sem/train'
+sem_data_dir = '/home/sungsooha/Desktop/Data/ftfy/sem/train'
+sem_test_datasets = []
+for f in os.listdir(sem_data_dir):
+    if os.path.isdir(os.path.join(sem_data_dir,f)):
+        sem_test_datasets.append(f)
+sem_test_datasets = sorted(sem_test_datasets)
+print(sem_test_datasets)
+
+param.train_datasets = 'human_patch'
+param.test_datasets = 'sem' #'human_patch'
+param.batch_size = 128
+param.model_path = './log/human/ckpt'
+
+do_test_fpr = True
+do_test_retrieval = True
 do_collect_retrieval_5 = True
 
 print('Preparing data pipeline ...')
 with tf.device('/cpu:0'), tf.name_scope('input'):
-    test_dataset, test_data_sampler = input_fn(
-        data_dir=param.data_dir,
+    # test_dataset, test_data_sampler = input_fn(
+    #     data_dir=param.data_dir,
+    #     base_patch_size=param.base_patch_size,
+    #     patches_per_row=param.patches_per_row,
+    #     patches_per_col=param.patches_per_col,
+    #     batch_size=param.batch_size,
+    #     patch_size=param.patch_size,
+    #     n_channels=param.n_channels
+    # )
+    test_dataset, test_data_sampler = sem_input_fn(
+        data_dir=sem_data_dir,
         base_patch_size=param.base_patch_size,
-        patches_per_row=param.patches_per_row,
-        patches_per_col=param.patches_per_col,
+        patches_per_row=10,
+        patches_per_col=10,
         batch_size=param.batch_size,
         patch_size=param.patch_size,
         n_channels=param.n_channels
@@ -49,7 +69,7 @@ with tf.device('/cpu:0'), tf.name_scope('input'):
 
 print('load data ...')
 test_data_sampler.load_dataset(
-    dir_name=param.test_datasets,
+    dir_name=sem_test_datasets,
     ext='bmp',
     patch_size=param.patch_size,
     n_channels=param.n_channels,
@@ -119,6 +139,7 @@ if do_test_retrieval or do_collect_retrieval_5:
             patch = (patch - patch.min()) / patch.ptp()
             patch_set.append(patch)
 
+            # todo: this doesn't work for sem patch dataset
             patch_gid = patch_idx // 78
             irow = (patch_idx%78) // 6
             icol = (patch_idx%78) % 6
@@ -134,6 +155,7 @@ if do_test_retrieval or do_collect_retrieval_5:
                 patch = (patch - patch.min()) / patch.ptp()
                 patch_set.append(patch)
 
+                # todo: this doesn't work for sem patch dataset
                 patch_gid = patch_idx // 78
                 irow = (patch_idx % 78) // 6
                 icol = (patch_idx % 78) % 6
