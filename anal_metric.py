@@ -19,7 +19,7 @@ np.random.seed(2019)
 tf.set_random_seed(2019)
 
 param = get_default_param(mode='AUSTIN', log_dir=None)
-param.log_dir = './log/human'
+param.log_dir = './log/campus'
 param.data_dir = '/home/sungsooha/Desktop/Data/ftfy/austin'
 
 #sem_data_dir = './Data/sem/train'
@@ -31,10 +31,10 @@ for f in os.listdir(sem_data_dir):
 sem_test_datasets = sorted(sem_test_datasets)
 print(sem_test_datasets)
 
-param.train_datasets = 'human_patch'
+param.train_datasets = 'campus_patch'
 param.test_datasets = 'sem' #'human_patch'
 param.batch_size = 128
-param.model_path = './log/human/ckpt'
+param.model_path = './log/campus/ckpt'
 
 do_test_fpr = True
 do_test_retrieval = True

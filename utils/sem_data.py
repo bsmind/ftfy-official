@@ -123,10 +123,10 @@ class PatchDataManager(object):
 
         self.file = open(os.path.join(self.output_dir, info_fname), 'w')
 
-    def _save_image(self, im):
+    def _save_image(self, im, prefix='patchset'):
         im *= 255
         im = im.astype(np.uint8)
-        fname = 'patchset_{:06d}.bmp'.format(self.counter)
+        fname = '{:s}_{:06d}.bmp'.format(prefix, self.counter)
         imsave(os.path.join(self.output_dir, fname), im)
         self.counter += 1
 
@@ -144,7 +144,24 @@ class PatchDataManager(object):
                 im = np.vstack(self.patches_row)
                 self._save_image(im)
                 self.patches_row = []
+        self.file.flush()
 
+    def add_patches(self, patches:list):
+        for patch in patches:
+            self.patches_col.append(patch)
+
+            if len(self.patches_col) == self.patches_per_col:
+                self.patches_row.append(np.hstack(self.patches_col))
+                self.patches_col = []
+
+            if len(self.patches_row) == self.patches_per_row:
+                im = np.vstack(self.patches_row)
+                self._save_image(im)
+                self.patches_row = []
+
+    def add_info(self, info:list):
+        for _info in info:
+            self.file.write(_info)
         self.file.flush()
 
     def dump(self):

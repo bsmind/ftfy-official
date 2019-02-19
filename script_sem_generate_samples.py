@@ -107,6 +107,8 @@ def generate_triplet_samples(output_dir, data_info:dict, n_samples, pid_offsets)
         # - anchor /in {A}
         # - positive /in {A, B} except the anchor
         # - negative /in {A', B'} of other key points
+        # todo: it supposed to sample the negative example from other key points from different
+        # SEM images, but it didn't. But, it seems to work well...
         else:
             idx_p = idx_a
             while idx_p == idx_a:
@@ -215,7 +217,7 @@ if __name__ == '__main__':
     n_matched_pairs   =   50000
     n_query_per_group = 1 # must 1
 
-    do_triplet = True
+    do_triplet = False
     do_matched = False
     do_retrieval = False
 
@@ -239,6 +241,17 @@ if __name__ == '__main__':
         data_info[data_dir], n_patches = load_info(base_dir, data_dir)
         offsets[data_dir] = n_acc_patches
         n_acc_patches += n_patches
+
+    n_image_set = len(list(data_info.keys()))
+    n_images = 0
+    n_patch_groups = 0
+    for k, (gIDs, datamap, pid_to_fid) in data_info.items():
+        n_images += len(np.unique(list(pid_to_fid.values())))
+        n_patch_groups += len(gIDs)
+    print("# SEM images: %s" % n_images)
+    print("# SEM image sets: %s" % n_image_set)
+    print("# SEM patch groups: %s" % n_patch_groups)
+    print("# SEM patches: %s" % n_acc_patches)
 
     # ------------------------------------------------------------------------
     # Generate triplet samples

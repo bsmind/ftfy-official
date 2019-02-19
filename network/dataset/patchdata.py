@@ -81,14 +81,14 @@ class PatchDataSampler(object):
                     if patch_size != self.PATCH_SIZE:
                         patch = resize(patch, patch_size)
                     patch_tensor = patch.reshape(*patch_size, n_channels)
-                    if n_patches is None:
+                    if isinstance(patches_all, list):
                         patches_all.append(patch_tensor)
                     else:
                         patches_all[counter] = patch_tensor
                     counter += 1
                     if counter >= n_patches:
                         done = True
-        if n_patches == np.inf:
+        if isinstance(patches_all, list):
             patches_all = np.asarray(patches_all)
         return patches_all
 
