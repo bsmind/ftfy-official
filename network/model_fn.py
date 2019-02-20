@@ -126,4 +126,9 @@ def triplet_model_fn(
         net=builder
     )
 
+def ftfy_model_fn(
+
+):
+    pass
+
 
