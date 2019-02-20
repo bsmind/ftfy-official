@@ -14,6 +14,7 @@ class Net(BaseNet):
     def call(self, images, is_training, **kwargs):
         bn_prefix = kwargs.get("bn_prefix", "")
         trainable = kwargs.get("trainable", True)
+        include_fc = kwargs.get("include_fc", True)
 
         w_args = {
             'kernel_initializer': tf.initializers.variance_scaling(2),
@@ -144,13 +145,14 @@ class Net(BaseNet):
                 self.conv13 = tf.identity(net)
 
             ###
-            net = tf.layers.flatten(net)
-            net = tf.layers.dropout(net, rate=0.5, training=is_training)
-            net = tf.layers.dense(net, self.n_feats, name='fc1', **fc_args)
-            net = tf.layers.batch_normalization(net, **bn_args, name=bn_prefix + '_bn14')
-            net = tf.nn.l2_normalize(net, axis=1)
-            if not self.created:
-                self.fc1 = tf.identity(net)
+            if include_fc:
+                net = tf.layers.flatten(net)
+                net = tf.layers.dropout(net, rate=0.5, training=is_training)
+                net = tf.layers.dense(net, self.n_feats, name='fc1', **fc_args)
+                net = tf.layers.batch_normalization(net, **bn_args, name=bn_prefix + '_bn14')
+                net = tf.nn.l2_normalize(net, axis=1)
+                if not self.created:
+                    self.fc1 = tf.identity(net)
             self.created = True
 
         return net
