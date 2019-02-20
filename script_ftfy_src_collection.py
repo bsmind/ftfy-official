@@ -109,72 +109,52 @@ def load_patches(dir_name, fnames, patch_size, n_channels, n_patches=None):
         patches_all = np.asarray(patches_all)
     return patches_all
 
-if __name__ == '__main__':
-    np.random.seed(2019)
-
-    base_dir = '/home/sungsooha/Desktop/Data/ftfy/sem/train'
-    data_dir = 'set_033'
-
-    n_blocks = 3 # n x n blocks
-    src_size = 256
-
-    debug = True
-    output_dir = os.path.join(base_dir, data_dir, 'sources')
-
+def generate_source_images(
+        fname_to_gid, gid_info, pid_info,
+        n_blocks=3, make_square=True, src_size=256,
+        debug=False, output_dir=None, is_sem=True
+):
     data_manager = None
-    if not debug:
+    if not debug and output_dir is not None:
         data_manager = PatchDataManager(output_dir)
 
-    # ------------------------------------------------------------------------
-    # Load info
-    # ------------------------------------------------------------------------
-    fname_to_gid, gid_info, pid_info = load_sem_info(base_dir, data_dir)
-
-    if debug:
-        patch_fnames = load_image_fnames(base_dir, os.path.join(data_dir, 'patches'))
-        patches = load_patches(data_dir, patch_fnames, (128, 128), 1)
-
-    print('Data dir : %s' % data_dir)
-    print('# images : %s' % len(list(fname_to_gid.keys())))
-    print('# groups : %s' % len(list(gid_info.keys())))
-    print('# patches: %s' % len(list(pid_info.keys())))
-    #print('patches  : {}'.format(patches.shape))
-
-    # ------------------------------------------------------------------------
-    # Generate source collection
-    # ------------------------------------------------------------------------
     src_counter = 0
     for fname, gIDs in tqdm(fname_to_gid.items(), desc='Generate source collection'):
-
         im = imread(fname, as_gray=True)
         im /= 255.
-        im = im[:-110,:]
+        # for SEM image, need to crop bottom rows to exclude information strings...
+        if is_sem:
+            im = im[:-110,:]
 
         for gid in gIDs:
             pIDs = gid_info[gid].get('pids')
             factors = gid_info[gid].get('factors')
             factors = sorted(factors)
-
-            ms_im = get_multiscale(im, factors, debug=debug)
-            ms_im_f = [get_interpolator(_im) for _im in ms_im]
-
             x0, y0 = gid_info[gid].get('x0'), gid_info[gid].get('y0')
             x1, y1 = gid_info[gid].get('x1'), gid_info[gid].get('y1')
             blk_width, blk_height = x1 - x0 + 1, y1 - y0 + 1
+            if make_square:
+                blk_side = max(blk_width, blk_height)
+                blk_width = blk_side
+                blk_height = blk_side
 
-            min_src_x0 = x0 - (n_blocks - 1) * blk_width
-            src_x0 = np.round(np.random.uniform(min_src_x0, x0))
+            # create multi-scaled images
+            ms_im = get_multiscale(im, factors, debug=debug)
+            ms_im_f = [get_interpolator(_im) for _im in ms_im]
 
-            min_src_y0 = y0 - (n_blocks - 1) * blk_height
-            src_y0 = np.round(np.random.uniform(min_src_y0, y0))
-
+            # determine source image size and upper-left corner position
             src_w = int(n_blocks * blk_width)
             src_h = int(n_blocks * blk_height)
 
+            min_src_x0 = x0 - (n_blocks - 1) * blk_width
+            min_src_y0 = y0 - (n_blocks - 1) * blk_height
+            src_x0 = np.round(np.random.uniform(min_src_x0, x0))
+            src_y0 = np.round(np.random.uniform(min_src_y0, y0))
+
+            # crop multi-scaled source images
             ms_src = []
             ms_src_scale = []
             for idx, _factor in enumerate(factors):
-                _im_h, _im_w = ms_im[idx].shape
                 _x0 = src_x0 / _factor
                 _y0 = src_y0 / _factor
                 _w  = src_w / _factor
@@ -234,10 +214,154 @@ if __name__ == '__main__':
 
                     plt.show()
 
-            if not debug:
+            if data_manager is not None:
                 data_manager.add_patches(ms_src)
                 data_manager.add_info(info)
             src_counter += len(ms_src)
-    if not debug:
+    if data_manager is not None:
         data_manager.dump()
     print('# source images: %s' % src_counter)
+
+if __name__ == '__main__':
+    np.random.seed(2019)
+
+    base_dir = '/home/sungsooha/Desktop/Data/ftfy/sem/train'
+    data_dir = 'set_065'
+
+    n_blocks = 3 # n x n blocks
+    src_size = 256
+    make_square = True
+    is_sem = True
+
+    debug = False
+    output_dir = os.path.join(base_dir, data_dir, 'sources_square')
+
+
+
+    # ------------------------------------------------------------------------
+    # Load info
+    # ------------------------------------------------------------------------
+    fname_to_gid, gid_info, pid_info = load_sem_info(base_dir, data_dir)
+
+    if debug:
+        patch_fnames = load_image_fnames(base_dir, os.path.join(data_dir, 'patches'))
+        patches = load_patches(data_dir, patch_fnames, (128, 128), 1)
+
+    print('Data dir : %s' % data_dir)
+    print('# images : %s' % len(list(fname_to_gid.keys())))
+    print('# groups : %s' % len(list(gid_info.keys())))
+    print('# patches: %s' % len(list(pid_info.keys())))
+    #print('patches  : {}'.format(patches.shape))
+
+    # ------------------------------------------------------------------------
+    # Generate source collection
+    # ------------------------------------------------------------------------
+    generate_source_images(
+        fname_to_gid=fname_to_gid,
+        gid_info=gid_info,
+        pid_info=pid_info,
+        n_blocks=n_blocks,
+        make_square=make_square,
+        src_size=src_size,
+        debug=debug,
+        output_dir=output_dir,
+        is_sem=is_sem
+    )
+    # src_counter = 0
+    # for fname, gIDs in tqdm(fname_to_gid.items(), desc='Generate source collection'):
+    #
+    #     im = imread(fname, as_gray=True)
+    #     im /= 255.
+    #     im = im[:-110,:]
+    #
+    #     for gid in gIDs:
+    #         pIDs = gid_info[gid].get('pids')
+    #         factors = gid_info[gid].get('factors')
+    #         factors = sorted(factors)
+    #
+    #         ms_im = get_multiscale(im, factors, debug=debug)
+    #         ms_im_f = [get_interpolator(_im) for _im in ms_im]
+    #
+    #         x0, y0 = gid_info[gid].get('x0'), gid_info[gid].get('y0')
+    #         x1, y1 = gid_info[gid].get('x1'), gid_info[gid].get('y1')
+    #         blk_width, blk_height = x1 - x0 + 1, y1 - y0 + 1
+    #
+    #         min_src_x0 = x0 - (n_blocks - 1) * blk_width
+    #         src_x0 = np.round(np.random.uniform(min_src_x0, x0))
+    #
+    #         min_src_y0 = y0 - (n_blocks - 1) * blk_height
+    #         src_y0 = np.round(np.random.uniform(min_src_y0, y0))
+    #
+    #         src_w = int(n_blocks * blk_width)
+    #         src_h = int(n_blocks * blk_height)
+    #
+    #         ms_src = []
+    #         ms_src_scale = []
+    #         for idx, _factor in enumerate(factors):
+    #             _im_h, _im_w = ms_im[idx].shape
+    #             _x0 = src_x0 / _factor
+    #             _y0 = src_y0 / _factor
+    #             _w  = src_w / _factor
+    #             _h  = src_h / _factor
+    #             _step_x = _w / src_size
+    #             _step_y = _h / src_size
+    #             _src = ms_im_f[idx](
+    #                 np.arange(_x0, _x0 + _w, _step_x),
+    #                 np.arange(_y0, _y0 + _h, _step_y)
+    #             )
+    #             _src = _src[:src_size, :src_size]
+    #             _src = (_src - _src.min()) / _src.ptp()
+    #             ms_src.append(_src)
+    #             ms_src_scale.append((_step_x, _step_y))
+    #
+    #         info_src_id = '{:d} {:d}'.format(src_counter, src_counter + len(ms_src))
+    #         info = []
+    #         for pid in pIDs:
+    #             cx, cy, side, factor, iouid = pid_info[pid]
+    #
+    #             # NOTE: in fact, all bboxes have same coordinates because the multi-scaled
+    #             # source images are resized (or sampled) to have the same dimension.
+    #             bboxes = []
+    #             for _factor, (_scale_x, _scale_y) in zip(factors, ms_src_scale):
+    #                 tar_x0 = ((cx - side/2) - src_x0) / _factor / _scale_x
+    #                 tar_y0 = ((cy - side/2) - src_y0) / _factor / _scale_y
+    #                 tar_w  = side / _factor / _scale_x
+    #                 tar_h  = side / _factor / _scale_y
+    #                 bboxes.append((tar_x0, tar_y0, tar_w, tar_h))
+    #                 #print(pid, _factor, bboxes[-1])
+    #
+    #             bbox = bboxes[-1]
+    #             info.append('{:d} {:s} {:.3f} {:.3f} {:.3f} {:.3f}\n'.format(
+    #                 pid, info_src_id, bbox[0], bbox[1], bbox[2], bbox[3]
+    #             ))
+    #
+    #             # visualization for debugging (src + bboxes)
+    #             if debug:
+    #                 fig, ax = plt.subplots(3, len(bboxes))
+    #                 for _ax, _src, _bbox in zip(ax[0], ms_src, bboxes):
+    #                     _ax.imshow(_src, cmap='gray')
+    #                     _ax.add_patch(Rectangle(
+    #                         (_bbox[0], _bbox[1]), _bbox[2], _bbox[3],
+    #                         linewidth=1, edgecolor='r', facecolor='none'
+    #                     ))
+    #
+    #                 for _ax, _src, _bbox in zip(ax[1], ms_src, bboxes):
+    #                     _x0 = int(np.round(_bbox[0]))
+    #                     _y0 = int(np.round(_bbox[1]))
+    #                     _w  = int(np.round(_bbox[2]))
+    #                     _h  = int(np.round(_bbox[3]))
+    #                     _tar = _src[_y0:_y0+_h, _x0:_x0+_w]
+    #                     _ax.imshow(_tar, cmap='gray')
+    #
+    #                 for _ax in ax[2]:
+    #                     _ax.imshow(np.squeeze(patches[pid]), cmap='gray')
+    #
+    #                 plt.show()
+    #
+    #         if not debug:
+    #             data_manager.add_patches(ms_src)
+    #             data_manager.add_info(info)
+    #         src_counter += len(ms_src)
+    # if not debug:
+    #     data_manager.dump()
+    # print('# source images: %s' % src_counter)

@@ -61,6 +61,7 @@ def triplet_model_fn(
         use_regularization_loss = False,
         learning_rate = 0.0001, # todo: replace with opt_kwargs
         shared_batch_layers = True,
+        trainable=True,
         name='triplet-net'
 ):
     assert mode in MODE, 'Unknown mode: %s' % mode
@@ -77,11 +78,11 @@ def triplet_model_fn(
 
     Net = get_cnn_model(cnn_name)
     builder = Net(n_feats=n_feats, weight_decay=0.0001, reuse=tf.AUTO_REUSE, name=name)
-    a_feat = builder(anchors, is_training=is_training,
+    a_feat = builder(anchors, is_training=is_training, trainable=trainable,
                      bn_prefix="" if shared_batch_layers else "a_")
-    p_feat = builder(positives, is_training=is_training,
+    p_feat = builder(positives, is_training=is_training, trainable=trainable,
                      bn_prefix="" if shared_batch_layers else "p_")
-    n_feat = builder(negatives, is_training=is_training,
+    n_feat = builder(negatives, is_training=is_training, trainable=trainable,
                      bn_prefix="" if shared_batch_layers else "n_")
 
     triplet_loss = None

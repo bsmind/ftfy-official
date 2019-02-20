@@ -12,7 +12,8 @@ class Net(BaseNet):
         self.created = False
 
     def call(self, images, is_training, **kwargs):
-        bn_prefix = kwargs.pop("bn_prefix", "")
+        bn_prefix = kwargs.get("bn_prefix", "")
+        trainable = kwargs.get("trainable", True)
 
         w_args = {
             'kernel_initializer': tf.initializers.variance_scaling(2),
@@ -20,13 +21,16 @@ class Net(BaseNet):
         }
         conv_args = {
             'padding': 'same',
+            'trainable': trainable,
             **w_args
         }
         fc_args = {
-            **w_args
+            **w_args,
+            'trainable': trainable
         }
         bn_args = {
-            'training': is_training
+            'training': is_training,
+            'trainable': trainable
         }
         pool_args = {
             'pool_size': 2,
