@@ -3,7 +3,7 @@ import tensorflow as tf
 class Net(object):
     def __init__(self,
                  name='ftfy',
-                 cell_size=8,
+                 cell_size=(8, 8),
                  n_bbox_estimators=2,
                  n_parameters=5,
                  weight_decay=0.0001):
@@ -32,7 +32,7 @@ class Net(object):
         with tf.variable_scope('filter_generator'):
             features_reshaped = tf.reshape(
                 tf.transpose(features, [0, 3, 1, 2]),
-                [-1, self.cell_size, self.cell_size, 1]
+                [-1, self.cell_size[0], self.cell_size[1], 1]
             )
 
             h = tf.layers.conv2d(
@@ -40,7 +40,7 @@ class Net(object):
             h = tf.layers.batch_normalization(h, **bn_args, name='bn1')
             h = tf.nn.leaky_relu(h)
 
-            h = tf.layers.conv2d(h, 256, 1, **conv_args, name='conv2')
+            h = tf.layers.conv2d(h, 256, 1, 1, **conv_args, name='conv2')
             h = tf.layers.batch_normalization(h, **bn_args, name='bn2')
             h = tf.nn.leaky_relu(h)
 

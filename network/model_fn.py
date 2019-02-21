@@ -11,7 +11,7 @@ from network.loss.ftfy import loss as ftfy_loss
 
 MODE = ['TRAIN', 'TEST']
 LOSS = ['triplet', 'spreadout']
-OPTIMIZER = ['Adam', 'Momentum']
+OPTIMIZER = ['Adam', 'Momentum', 'Grad']
 CNN = ['simple', 'ftfy', 'spread']
 
 def get_cnn_model(cnn_name):
@@ -35,24 +35,32 @@ def get_triplet_loss(loss_name, a, p, n, **kwargs):
     return loss
 
 def get_optimizer(optimizer_name, **kwargs):
+    learning_rate = kwargs.pop('learning_rate', 0.001)
     if optimizer_name == 'Adam':
-        learning_rate = kwargs.get('learning_rate', None)
         return tf.train.AdagradOptimizer(learning_rate=learning_rate)
-    elif optimizer_name == 'Momentum':
-        global_step = tf.train.get_global_step()
-        decay_steps = 10000
-        start_learning_rate = 0.1
+    elif optimizer_name == 'Grad':
+        decay_steps = kwargs.pop('decay_steps', 10000)
+        decay_rate = kwargs.pop('decay_rate', 0.9)
         learning_rate = tf.train.exponential_decay(
-            learning_rate=start_learning_rate,
-            global_step=global_step,
+            learning_rate=learning_rate,
+            global_step=tf.train.get_global_step(),
             decay_steps=decay_steps,
-            decay_rate=0.96,
+            decay_rate=decay_rate,
             staircase=True
         )
-        return tf.train.MomentumOptimizer(
+        return tf.train.GradientDescentOptimizer(learning_rate=learning_rate)
+    elif optimizer_name == 'Momentum':
+        decay_steps = kwargs.pop('decay_steps', 10000)
+        decay_rate = kwargs.pop('decay_rate', 0.9)
+        momentum = kwargs.pop('momentum', 0.9)
+        learning_rate = tf.train.exponential_decay(
             learning_rate=learning_rate,
-            momentum=0.9
+            global_step=tf.train.get_global_step(),
+            decay_steps=decay_steps,
+            decay_rate=decay_rate,
+            staircase=True
         )
+        return tf.train.MomentumOptimizer(learning_rate=learning_rate, momentum=momentum)
     else:
         raise ValueError('Unknown optimizer: %s' % optimizer_name)
 
@@ -191,8 +199,7 @@ def ftfy_model_fn(
             total_loss += regularization_loss
 
         global_step = tf.train.create_global_step()
-        # todo: use optimizer_kwargs
-        optimizer = get_optimizer(optimizer_name, learning_rate=0.001)
+        optimizer = get_optimizer(optimizer_name, **optimizer_kwargs)
 
         grads_and_vars = optimizer.compute_gradients(total_loss)
         train_op = optimizer.apply_gradients(grads_and_vars, global_step=global_step)
