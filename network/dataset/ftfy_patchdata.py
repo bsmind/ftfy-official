@@ -183,6 +183,18 @@ class FTFYPatchDataSampler(object):
             output('targets : {}'.format(tar_patches.shape))
             output('sources : {}'.format(src_patches.shape))
 
+    def generate_stats(self):
+        mean = np.mean(self.data['targets'])
+        std = np.std(self.data['targets'])
+        return mean, std
+
+    def normalize_data(self, mean, std):
+        for i in tqdm(range(len(self.data['targets'])), desc='Normalizing targets'):
+            self.data['targets'][i] = (self.data['targets'][i] - mean) / std
+
+        for i in tqdm(range(len(self.data['sources'])), desc='Normalizing sources'):
+            self.data['sources'][i] = (self.data['sources'][i] - mean) / std
+
     def __iter__(self):
         return self
 

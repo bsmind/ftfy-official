@@ -278,6 +278,43 @@ class TripletEstimator(object):
             save_path = os.path.join(self.save_dir, name)
             save_path = self.saver.save(self.sess, save_path, global_step=global_step)
             tf.logging.info('Save checkpoint @ {}'.format(save_path))
+
+class FTFYSpec(object):
+    def __init__(
+            self,
+            sources, targets, labels, bboxes,
+            src_feat, tar_feat, logits,
+            train_op=None,
+            obj_loss=None, noobj_loss=None, coord_loss=None,
+            regularization_loss=None, total_loss=None,
+            global_step=None,
+            train_feed_dict=None,
+            test_feed_dict=None,
+            feat_net=None, ftfy_net=None
+    ):
+        self.sources = sources
+        self.targets = targets
+        self.labels = labels
+        self.bboxes = bboxes
+
+        self.src_feat = src_feat
+        self.tar_feat = tar_feat
+        self.logits = logits
+
+        self.train_op = train_op
+        self.obj_loss = obj_loss
+        self.noobj_loss = noobj_loss
+        self.coord_loss = coord_loss
+        self.regularization_loss = regularization_loss
+        self.total_loss = total_loss
+        self.global_step = global_step
+
+        self.train_feed_dict = train_feed_dict
+        self.test_feed_dict = test_feed_dict
+
+        self.feat_net = feat_net
+        self.ftfy_net = ftfy_net
+
             
             
             

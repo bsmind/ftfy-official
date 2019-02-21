@@ -3,9 +3,11 @@ import tensorflow as tf
 from network.model.simple_cnn import Net as simplet_net
 from network.model.ftfy_cnn import Net as ftfy_net
 from network.model.spreadout_cnn import Net as spread_net
+from network.model.ftfy import Net as FTFY
 
-from network.train import TripletSpec
+from network.train import TripletSpec, FTFYSpec
 from network.loss.triplet import batch_offline_triplet_loss, spreadout_triplet_loss
+from network.loss.ftfy import loss as ftfy_loss
 
 MODE = ['TRAIN', 'TEST']
 LOSS = ['triplet', 'spreadout']
@@ -127,8 +129,106 @@ def triplet_model_fn(
     )
 
 def ftfy_model_fn(
-
+    # inputs
+    sources, targets, labels=None, bboxes=None,
+    # feature extractor
+    feat_name='ftfy', feat_trainable=False,
+    feat_shared_batch_layers=True, feat_scope='triplet-net',
+    # ftfy
+    ftfy_ver='v0', ftfy_scope='ftfy',
+    cell_size=8, n_bbox_estimators=2, n_parameters=5,
+    # loss and optimizer
+    loss_name='rms', obj_scale=1.0, noobj_scale=0.5, coord_scale=5.0,
+    use_regularization_loss=False,
+    optimizer_name='Momentum', optimizer_kwargs=None,
+    mode='TRAIN'
 ):
-    pass
+    assert mode in MODE, 'Unknown mode: %s' % mode
+    assert feat_name in CNN, 'Unknown feature: %s' % feat_name
+    tf.logging.info('FEATURE: %s' % feat_name)
+
+    if mode == 'TRAIN':
+        # todo: assert for loss_name
+        assert optimizer_name in OPTIMIZER, 'Unknown optimizer: %s' % optimizer_name
+        tf.logging.info('LOSS: %s' % loss_name)
+        tf.logging.info('OPTIMIZER: %s' % optimizer_name)
+
+    feat_is_training = tf.placeholder(tf.bool, (), "feat_is_training")
+    ftfy_is_training = tf.placeholder(tf.bool, (), "ftfy_is_training")
+
+    feat_net = get_cnn_model(feat_name)
+    feat_builder = feat_net(reuse=tf.AUTO_REUSE, name=feat_scope)
+    src_feat = feat_builder(sources, is_training=feat_is_training, trainable=feat_trainable,
+                            include_fc=False, bn_prefix="" if feat_shared_batch_layers else "a_")
+    tar_feat = feat_builder(targets, is_training=feat_is_training, trainable=feat_trainable,
+                            include_fc=False, bn_prefix="" if feat_shared_batch_layers else "p_")
+
+    # todo: use ftfy_ver, if other versions are available...
+    ftfy_builder = FTFY(name=ftfy_scope,
+                        cell_size=cell_size,
+                        n_bbox_estimators=n_bbox_estimators,
+                        n_parameters=n_parameters)
+
+    logits = ftfy_builder(src_feat, tar_feat, ftfy_is_training, trainable=True)
+
+
+    obj_loss, noobj_loss, coord_loss, total_loss = None, None, None, None
+    regularization_loss = None
+    train_op = None
+    global_step = None
+    if mode is 'TRAIN':
+        # todo: get loss function, if other losses are available
+        # note that variable_scope for ftfy_loss is defined internally
+        obj_loss, noobj_loss, coord_loss = ftfy_loss(
+            logits, labels, n_bbox_estimators, n_parameters
+        )
+        obj_loss = obj_scale * obj_loss
+        noobj_loss = noobj_scale * noobj_loss
+        coord_loss = coord_scale * coord_loss
+        total_loss = obj_loss + noobj_loss + coord_loss
+        if use_regularization_loss:
+            regularization_loss = tf.losses.get_regularization_loss()
+            total_loss += regularization_loss
+
+        global_step = tf.train.create_global_step()
+        # todo: use optimizer_kwargs
+        optimizer = get_optimizer(optimizer_name, learning_rate=0.001)
+
+        grads_and_vars = optimizer.compute_gradients(total_loss)
+        train_op = optimizer.apply_gradients(grads_and_vars, global_step=global_step)
+        update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
+        train_op = tf.group(train_op, *update_ops)
+
+    return FTFYSpec(
+        sources, targets, labels, bboxes,
+        src_feat, tar_feat, logits,
+        train_op=train_op,
+        obj_loss=obj_loss, noobj_loss=noobj_loss, coord_loss=coord_loss,
+        regularization_loss=regularization_loss, total_loss=total_loss,
+        global_step=global_step,
+        train_feed_dict={feat_is_training: True and feat_trainable, ftfy_is_training: True},
+        test_feed_dict={feat_is_training: False, ftfy_is_training: False},
+        feat_net=feat_builder, ftfy_net=ftfy_builder
+    )
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 

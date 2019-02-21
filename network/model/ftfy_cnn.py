@@ -2,7 +2,12 @@ import tensorflow as tf
 from network.model.base import BaseNet
 
 class Net(BaseNet):
-    def __init__(self, n_feats, weight_decay=0.0001, reuse=None, name="ftfy_cnn"):
+    def __init__(self,
+                 n_feats=128,
+                 weight_decay=0.0001,
+                 reuse=None,
+                 name="ftfy_cnn"
+    ):
         super().__init__(name)
 
         self.weight_decay = weight_decay
