@@ -44,8 +44,8 @@ class IoUPatchDataSamplerExt(IoUPatchDataSampler):
         self.data['patches'] = patches
 
         if debug:
-            output = print
-            #output = tf.logging.info
+            #output = print
+            output = tf.logging.info
             output('-- Dataset loaded : {}'.format(dir_name))
             output('-- # patches      : %s' % total_n_patches)
             output('-- # triplet samples: %s' % self.n_triplet_samples)

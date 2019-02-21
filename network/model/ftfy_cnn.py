@@ -2,7 +2,12 @@ import tensorflow as tf
 from network.model.base import BaseNet
 
 class Net(BaseNet):
-    def __init__(self, n_feats, weight_decay=0.0001, reuse=None, name="ftfy_cnn"):
+    def __init__(self,
+                 n_feats=128,
+                 weight_decay=0.0001,
+                 reuse=None,
+                 name="ftfy_cnn"
+    ):
         super().__init__(name)
 
         self.weight_decay = weight_decay
@@ -12,7 +17,9 @@ class Net(BaseNet):
         self.created = False
 
     def call(self, images, is_training, **kwargs):
-        bn_prefix = kwargs.pop("bn_prefix", "")
+        bn_prefix = kwargs.get("bn_prefix", "")
+        trainable = kwargs.get("trainable", True)
+        include_fc = kwargs.get("include_fc", True)
 
         w_args = {
             'kernel_initializer': tf.initializers.variance_scaling(2),
@@ -20,13 +27,16 @@ class Net(BaseNet):
         }
         conv_args = {
             'padding': 'same',
+            'trainable': trainable,
             **w_args
         }
         fc_args = {
-            **w_args
+            **w_args,
+            'trainable': trainable
         }
         bn_args = {
-            'training': is_training
+            'training': is_training,
+            'trainable': trainable
         }
         pool_args = {
             'pool_size': 2,
@@ -140,13 +150,14 @@ class Net(BaseNet):
                 self.conv13 = tf.identity(net)
 
             ###
-            net = tf.layers.flatten(net)
-            net = tf.layers.dropout(net, rate=0.5, training=is_training)
-            net = tf.layers.dense(net, self.n_feats, name='fc1', **fc_args)
-            net = tf.layers.batch_normalization(net, **bn_args, name=bn_prefix + '_bn14')
-            net = tf.nn.l2_normalize(net, axis=1)
-            if not self.created:
-                self.fc1 = tf.identity(net)
+            if include_fc:
+                net = tf.layers.flatten(net)
+                net = tf.layers.dropout(net, rate=0.5, training=is_training)
+                net = tf.layers.dense(net, self.n_feats, name='fc1', **fc_args)
+                net = tf.layers.batch_normalization(net, **bn_args, name=bn_prefix + '_bn14')
+                net = tf.nn.l2_normalize(net, axis=1)
+                if not self.created:
+                    self.fc1 = tf.identity(net)
             self.created = True
 
         return net

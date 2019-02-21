@@ -278,10 +278,210 @@ class TripletEstimator(object):
             save_path = os.path.join(self.save_dir, name)
             save_path = self.saver.save(self.sess, save_path, global_step=global_step)
             tf.logging.info('Save checkpoint @ {}'.format(save_path))
+
+class FTFYSpec(object):
+    def __init__(
+            self,
+            sources, targets, labels, bboxes,
+            src_feat, tar_feat, logits,
+            train_op=None,
+            obj_loss=None, noobj_loss=None, coord_loss=None,
+            regularization_loss=None, total_loss=None,
+            global_step=None,
+            train_feed_dict=None,
+            test_feed_dict=None,
+            feat_net=None, ftfy_net=None
+    ):
+        self.sources = sources
+        self.targets = targets
+        self.labels = labels
+        self.bboxes = bboxes
+
+        self.src_feat = src_feat
+        self.tar_feat = tar_feat
+        self.logits = logits
+
+        self.train_op = train_op
+        self.obj_loss = obj_loss
+        self.noobj_loss = noobj_loss
+        self.coord_loss = coord_loss
+        self.regularization_loss = regularization_loss
+        self.total_loss = total_loss
+        self.global_step = global_step
+
+        self.train_feed_dict = train_feed_dict
+        self.test_feed_dict = test_feed_dict
+
+        self.feat_net = feat_net
+        self.ftfy_net = ftfy_net
+
+class FTFYEstimator(object):
+    def __init__(
+            self,
+            spec:FTFYSpec,
+
+            feat_model_path=None, feat_scope=None, feat_epoch=None,
+            ftfy_model_path=None, ftfy_scope=None, ftfy_epoch=None,
+            save_dir=None
+    ):
+        self.spec = spec
+
+        config = tf.ConfigProto(
+            allow_soft_placement=True,
+            log_device_placement=False,
+            intra_op_parallelism_threads=8,
+            inter_op_parallelism_threads=0
+        )
+        config.gpu_options.allow_growth = True
+        self.sess = tf.Session(config=config)
+
+        # initialize
+        self.sess.run(tf.global_variables_initializer())
+        self.sess.run(tf.local_variables_initializer())
+
+        if feat_model_path is not None:
+            feat_vars = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope=feat_scope)
+            saver = tf.train.Saver(feat_vars)
+            ckpt = tf.train.get_checkpoint_state(feat_model_path)
+            if ckpt is None:
+                raise ValueError('Cannot find a checkpoint: %s' % feat_model_path)
+            model_checkpoint_path = ckpt.model_checkpoint_path
+            if feat_epoch is not None:
+                all_model_checkpoint_paths = ckpt.all_model_checkpoint_paths
+                if 0 <= feat_epoch and feat_epoch < len(all_model_checkpoint_paths):
+                    model_checkpoint_path = all_model_checkpoint_paths[feat_epoch]
+            saver.restore(self.sess, model_checkpoint_path)
+
+        self.saver = tf.train.Saver(max_to_keep=100)
+        if save_dir is not None:
+            self.save_dir = save_dir
             
-            
-            
-            
+        # todo: resotre from ftfy checkpoint
+
+    def train(self, dataset_initializer=None, log_every=0):
+        if self.spec.train_op is None or self.spec.total_loss is None:
+            raise ValueError("train_op and total_loss are undefined!")
+
+        train_step = [self.spec.train_op, self.spec.total_loss]
+        loss_names = ['total loss']
+        if self.spec.obj_loss is not None:
+            train_step.append(self.spec.obj_loss)
+            loss_names.append('obj loss')
+        if self.spec.noobj_loss is not None:
+            train_step.append(self.spec.noobj_loss)
+            loss_names.append('noobj loss')
+        if self.spec.coord_loss is not None:
+            train_step.append(self.spec.coord_loss)
+            loss_names.append('coord loss')
+        if self.spec.regularization_loss is not None:
+            train_step.append(self.spec.regularization_loss)
+            loss_names.append('L2 reg')
+
+        step = 0
+        avg_losses = np.zeros(len(loss_names), dtype=np.float32)
+        if dataset_initializer is not None:
+            self.sess.run(dataset_initializer)
+
+        try:
+            while True:
+                outputs = self.sess.run(train_step, feed_dict=self.spec.train_feed_dict)
+                for i in range(len(loss_names)):
+                    avg_losses[i] += outputs[i+1]
+
+                step += 1
+                if log_every > 0 and step % log_every == 0:
+                    tf.logging.info("step: {:d}".format(step))
+                    for name, value in zip(loss_names, avg_losses):
+                        tf.logging.info("Avg. {:s}: {:.6f}".format(name, value/step))
+
+                if step >= 10000:
+                    break
+
+        except tf.errors.OutOfRangeError:
+            avg_losses /= step
+            for name, value in zip(loss_names, avg_losses):
+                tf.logging.info("Avg. {:s}: {:.6f}".format(name, value))
+            tf.logging.info("Exhausted all data in the dataset ({:d})!".format(step))
+
+        return avg_losses[0]
+
+    def run(self, dataset_initializer=None):
+
+        fetches = [self.spec.logits, self.spec.bboxes]
+
+        if dataset_initializer is not None:
+            self.sess.run(dataset_initializer)
+
+        step = 0
+        all_logits, all_bboxes = [], []
+
+        try:
+            while True:
+                logits, bboxes \
+                    = self.sess.run(fetches, feed_dict=self.spec.test_feed_dict)
+
+                batch_size = logits.shape[0]
+
+                pred = logits.reshape((-1, 16, 16, 2, 5))
+                pred_confidence = np.reshape(pred[...,0], (-1, 16, 16, 2))
+                pred_bboxes = np.reshape(pred[...,1:], (-1, 16, 16, 2, 4))
+                offset = np.transpose(np.reshape(
+                    [np.array(np.arange(16))] * 16 * 2,
+                    [2, 16, 16]),
+                    [1, 2, 0]
+                )
+                offset_x = np.tile(
+                    np.reshape(offset, [1, 16, 16, 2]),
+                    [4, 1, 1, 1]
+                )
+                offset_y = np.transpose(offset_x, [0, 2, 1, 3])
+                pred_bboxes = np.stack([
+                    (pred_bboxes[..., 0] + offset_x) / 16,
+                    (pred_bboxes[..., 1] + offset_y) / 16,
+                    np.square(pred_bboxes[..., 2]),
+                    np.square(pred_bboxes[..., 3])
+                ], axis=-1)
+
+                pred_bboxes[..., 0] *= 256
+                pred_bboxes[..., 1] *= 256
+                pred_bboxes[..., 2] *= 256
+                pred_bboxes[..., 3] *= 256
+
+                pred_confidence = pred_confidence.reshape([-1, 16*16*2])
+                pred_bboxes = pred_bboxes.reshape([-1, 16*16*2, 4])
+
+                idx = np.argmax(pred_confidence[0])
+                print(pred_bboxes[0, idx])
+                print(bboxes[0])
+
+                # print(src_feat.shape, tar_feat.shape)
+                # src_feat = src_feat[0]
+                # tar_feat = tar_feat[0]
+                #
+                # src_feat = np.sum(src_feat, axis=-1)
+                # tar_feat = np.sum(tar_feat, axis=-1)
+                # print(src_feat.shape, tar_feat.shape)
+                #
+                # import matplotlib.pyplot as plt
+                # fig, (ax1, ax2) = plt.subplots(1, 2)
+                # ax1.imshow(src_feat)
+                # ax2.imshow(tar_feat)
+                # plt.show()
+
+                all_logits.append(logits)
+                all_bboxes.append(bboxes)
+
+                step += batch_size
+
+                break
+
+        except tf.errors.OutOfRangeError:
+            tf.logging.info("Exhausted all data in the dataset ({:d})!".format(step))
+
+        all_logits = np.concatenate(all_logits, axis=0)
+        all_bboxes = np.concatenate(all_bboxes, axis=0)
+
+        return all_logits, all_bboxes
             
             
             
