@@ -42,7 +42,7 @@ def calc_iou(boxes1, boxes2, scope='iou'):
     return iou
 
 
-def loss(logits, labels, n_bbox_estimators, n_parameters):
+def loss(logits, labels, n_bbox_estimators, n_parameters=5, csy=16, csx=16):
     """
     Compute loss for bbox prediction (from YOLO)
 
@@ -72,15 +72,16 @@ def loss(logits, labels, n_bbox_estimators, n_parameters):
     Returns:
 
     """
+    assert n_parameters==5, 'Currently n_parameters must be 5: {}'.format(n_parameters)
     logits_shape = tf.shape(logits)
     batch_size = logits_shape[0]
-    csy = logits_shape[1]
-    csx = logits_shape[2]
+    #csy = logits_shape[1]
+    #csx = logits_shape[2]
 
     # for training, csy = csx = 16
     __c_offset = np.transpose(np.reshape(
-        [np.array(np.arange(16))] * 16 * n_bbox_estimators,
-        [n_bbox_estimators, 16, 16]),
+        [np.array(np.arange(csy))] * csx * n_bbox_estimators,
+        [n_bbox_estimators, csy, csx]),
         [1, 2, 0]
     )
 
@@ -102,21 +103,18 @@ def loss(logits, labels, n_bbox_estimators, n_parameters):
             [batch_size, 1, 1, 1]
         )
         offset_y = tf.transpose(offset_x, (0, 2, 1, 3))
-        if n_parameters == 5:
-            pred_bboxes_t = tf.stack([
-                (pred_bboxes[..., 0] + offset_x) / tf.cast(csx, tf.float32),
-                (pred_bboxes[..., 1] + offset_y) / tf.cast(csy, tf.float32),
-                tf.square(pred_bboxes[..., 2]),
-                tf.square(pred_bboxes[..., 3])
-            ], axis=-1)
-            bboxes_t = tf.stack([
-                bboxes[..., 0] * tf.cast(csx, tf.float32) - offset_x,
-                bboxes[..., 1] * tf.cast(csy, tf.float32) - offset_y,
-                tf.sqrt(bboxes[..., 2]),
-                tf.sqrt(bboxes[..., 3])
-            ], axis=-1)
-        else:
-            raise NotImplementedError('Need to implement for 6 parameters!')
+        pred_bboxes_t = tf.stack([
+            (pred_bboxes[..., 0] + offset_x) / tf.cast(csx, tf.float32),
+            (pred_bboxes[..., 1] + offset_y) / tf.cast(csy, tf.float32),
+            tf.square(pred_bboxes[..., 2]),
+            tf.square(pred_bboxes[..., 3])
+        ], axis=-1)
+        bboxes_t = tf.stack([
+            bboxes[..., 0] * tf.cast(csx, tf.float32) - offset_x,
+            bboxes[..., 1] * tf.cast(csy, tf.float32) - offset_y,
+            tf.sqrt(bboxes[..., 2]),
+            tf.sqrt(bboxes[..., 3])
+        ], axis=-1)
 
         # calculate iou
         pred_iou = calc_iou(pred_bboxes_t, bboxes)
@@ -141,3 +139,38 @@ def loss(logits, labels, n_bbox_estimators, n_parameters):
 
     return obj_loss, noobj_loss, coord_loss
 
+def inference(logits, n_bbox_estimators, n_parameters=5, csy=16, csx=16):
+    assert n_parameters==5, 'Currently n_parameters must be 5: {}'.format(n_parameters)
+
+    logits_shape = tf.shape(logits)
+    batch_size = logits_shape[0]
+    #csy = logits_shape[1]
+    #csx = logits_shape[2]
+
+    __c_offset = np.transpose(np.reshape(
+        [np.array(np.arange(csy))] * csx * n_bbox_estimators,
+        [n_bbox_estimators, csy, csx]
+    ), [1, 2, 0])
+
+    with tf.variable_scope('inference'):
+        pred = tf.reshape(logits, [-1, csy, csx, n_bbox_estimators, n_parameters])
+        pred_confidence = tf.reshape(pred[..., 0], [-1, csy, csx, n_bbox_estimators])
+        pred_bboxes = tf.reshape(pred[..., 1:], [-1, csy, csx, n_bbox_estimators, n_parameters-1])
+
+        offset_x = tf.tile(
+            tf.reshape(tf.constant(__c_offset, dtype=tf.float32), [1, csy, csx, n_bbox_estimators]),
+            [batch_size, 1, 1, 1]
+        )
+        offset_y = tf.transpose(offset_x, (0, 2, 1, 3))
+
+        pred_bboxes_t = tf.stack([
+            (pred_bboxes[..., 0] + offset_x) / tf.cast(csx, tf.float32),
+            (pred_bboxes[..., 1] + offset_y) / tf.cast(csy, tf.float32),
+            tf.square(pred_bboxes[..., 2]),
+            tf.square(pred_bboxes[..., 3])
+        ], axis=-1)
+
+    pred_confidence = tf.reshape(pred_confidence, [-1, csy*csx*n_bbox_estimators])
+    pred_bboxes_t = tf.reshape(pred_bboxes_t, [-1, csy*csx*n_bbox_estimators, n_parameters-1])
+
+    return pred_confidence, pred_bboxes_t

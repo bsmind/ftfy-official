@@ -233,7 +233,8 @@ class FTFYParam(object):
             # ftfy
             ftfy_ver='v0', # for future usages
             ftfy_scope=self.ftfy_scope,
-            cell_size=self.tar_cellsz,
+            src_cell_size=self.src_cellsz,
+            tar_cell_size=self.tar_cellsz,
             n_bbox_estimators=self.n_bbox_estimators,
             n_parameters=self.n_parameters,
             loss_name='rms', # for future usages

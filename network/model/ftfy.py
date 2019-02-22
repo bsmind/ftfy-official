@@ -74,6 +74,8 @@ class Net(object):
 
             feat_f = tf.layers.batch_normalization(feat_f, **bn_args, name='bn')
             feat_f = tf.nn.leaky_relu(feat_f)
+
+            feat_f = tf.layers.dropout(feat_f, rate=0.3, training=is_training)
         return feat_f
 
     def _bbox_prediction(self, features, trainable, is_training):
@@ -111,6 +113,8 @@ class Net(object):
             h = tf.layers.conv2d(h, 256, 3, **conv_args, name='conv6')
             h = tf.layers.batch_normalization(h, **bn_args, name='bn6')
             h = tf.nn.leaky_relu(h)
+
+            h = tf.layers.dropout(h, rate=0.2, training=is_training)
 
             N = self.n_parameters * self.n_bbox_estimators
             h = tf.layers.conv2d(h, N, 1, **conv_args, name='conv7')
