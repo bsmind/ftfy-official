@@ -284,6 +284,7 @@ class FTFYSpec(object):
             self,
             sources, targets, labels, bboxes,
             src_feat, tar_feat, logits,
+            pred_confidene, pred_bboxes,
             train_op=None,
             obj_loss=None, noobj_loss=None, coord_loss=None,
             regularization_loss=None, total_loss=None,
@@ -300,6 +301,9 @@ class FTFYSpec(object):
         self.src_feat = src_feat
         self.tar_feat = tar_feat
         self.logits = logits
+
+        self.pred_confidence = pred_confidene
+        self.pred_bboxes = pred_bboxes
 
         self.train_op = train_op
         self.obj_loss = obj_loss
@@ -358,7 +362,7 @@ class FTFYEstimator(object):
             
         # todo: resotre from ftfy checkpoint
 
-    def train(self, dataset_initializer=None, log_every=0):
+    def train(self, dataset_initializer=None, log_every=0, n_max_steps=0):
         if self.spec.train_op is None or self.spec.total_loss is None:
             raise ValueError("train_op and total_loss are undefined!")
 
@@ -394,96 +398,71 @@ class FTFYEstimator(object):
                     for name, value in zip(loss_names, avg_losses):
                         tf.logging.info("Avg. {:s}: {:.6f}".format(name, value/step))
 
-                if step >= 10000:
+                if n_max_steps > 0 and step >= n_max_steps:
+                    tf.logging.info('Terminated with step: {:d}'.format(step))
                     break
 
         except tf.errors.OutOfRangeError:
-            avg_losses /= step
-            for name, value in zip(loss_names, avg_losses):
-                tf.logging.info("Avg. {:s}: {:.6f}".format(name, value))
             tf.logging.info("Exhausted all data in the dataset ({:d})!".format(step))
+
+        avg_losses /= step
+        tf.logging.info("Final avg. losses:")
+        for name, value in zip(loss_names, avg_losses):
+            tf.logging.info("Avg. {:s}: {:.6f}".format(name, value))
 
         return avg_losses[0]
 
-    def run(self, dataset_initializer=None):
+    def run(self, dataset_initializer=None, top_k=0, n_max_test=1000):
 
-        fetches = [self.spec.logits, self.spec.bboxes]
+        fetches = [self.spec.pred_confidence, self.spec.pred_bboxes, self.spec.bboxes]
 
         if dataset_initializer is not None:
             self.sess.run(dataset_initializer)
 
         step = 0
-        all_logits, all_bboxes = [], []
+        all_confidences, all_pred_bboxes, all_bboxes = [], [], []
 
         try:
             while True:
-                logits, bboxes \
+                confidence, pred_bboxes, bboxes \
                     = self.sess.run(fetches, feed_dict=self.spec.test_feed_dict)
 
-                batch_size = logits.shape[0]
+                batch_size = confidence.shape[0]
 
-                pred = logits.reshape((-1, 16, 16, 2, 5))
-                pred_confidence = np.reshape(pred[...,0], (-1, 16, 16, 2))
-                pred_bboxes = np.reshape(pred[...,1:], (-1, 16, 16, 2, 4))
-                offset = np.transpose(np.reshape(
-                    [np.array(np.arange(16))] * 16 * 2,
-                    [2, 16, 16]),
-                    [1, 2, 0]
-                )
-                offset_x = np.tile(
-                    np.reshape(offset, [1, 16, 16, 2]),
-                    [4, 1, 1, 1]
-                )
-                offset_y = np.transpose(offset_x, [0, 2, 1, 3])
-                pred_bboxes = np.stack([
-                    (pred_bboxes[..., 0] + offset_x) / 16,
-                    (pred_bboxes[..., 1] + offset_y) / 16,
-                    np.square(pred_bboxes[..., 2]),
-                    np.square(pred_bboxes[..., 3])
-                ], axis=-1)
+                batch_ind = np.argsort(confidence)
+                for i in range(batch_size):
+                    ind = batch_ind[i]
+                    ind = ind[::-1]
+                    confidence[i] = confidence[i, ind]
+                    pred_bboxes[i] = pred_bboxes[i, ind, :]
 
-                pred_bboxes[..., 0] *= 256
-                pred_bboxes[..., 1] *= 256
-                pred_bboxes[..., 2] *= 256
-                pred_bboxes[..., 3] *= 256
+                if top_k > 0:
+                    confidence = confidence[:, :top_k]
+                    pred_bboxes = pred_bboxes[:, :top_k]
 
-                pred_confidence = pred_confidence.reshape([-1, 16*16*2])
-                pred_bboxes = pred_bboxes.reshape([-1, 16*16*2, 4])
-
-                idx = np.argmax(pred_confidence[0])
-                print(pred_bboxes[0, idx])
-                print(bboxes[0])
-
-                # print(src_feat.shape, tar_feat.shape)
-                # src_feat = src_feat[0]
-                # tar_feat = tar_feat[0]
-                #
-                # src_feat = np.sum(src_feat, axis=-1)
-                # tar_feat = np.sum(tar_feat, axis=-1)
-                # print(src_feat.shape, tar_feat.shape)
-                #
-                # import matplotlib.pyplot as plt
-                # fig, (ax1, ax2) = plt.subplots(1, 2)
-                # ax1.imshow(src_feat)
-                # ax2.imshow(tar_feat)
-                # plt.show()
-
-                all_logits.append(logits)
-                all_bboxes.append(bboxes)
-
+                all_confidences.append(confidence)
+                all_pred_bboxes.append(pred_bboxes)
+                all_bboxes.append(bboxes[..., 1:])
                 step += batch_size
 
-                break
+                if step >= n_max_test:
+                    tf.logging.info("Terminate with {:d}".format(step))
+                    break
 
         except tf.errors.OutOfRangeError:
             tf.logging.info("Exhausted all data in the dataset ({:d})!".format(step))
 
-        all_logits = np.concatenate(all_logits, axis=0)
+        all_confidences = np.concatenate(all_confidences, axis=0)
+        all_pred_bboxes = np.concatenate(all_pred_bboxes, axis=0)
         all_bboxes = np.concatenate(all_bboxes, axis=0)
 
-        return all_logits, all_bboxes
+        return all_confidences, all_pred_bboxes, all_bboxes
             
-            
+    def save(self, name, global_step=None):
+        if self.saver is not None:
+            save_path = os.path.join(self.save_dir, name)
+            save_path = self.saver.save(self.sess, save_path, global_step=global_step)
+            tf.logging.info('Save checkpoint @ {}'.format(save_path))
             
             
             

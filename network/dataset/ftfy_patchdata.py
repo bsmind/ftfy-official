@@ -31,7 +31,7 @@ def to_one_shot_labels(bboxes, imgsz=(256, 256), cellsz=(16,16)):
 
     norm_bboxes = np.ones((n_bboxes, 5), dtype=np.float32)
     norm_bboxes[:,1] = cx / imgsz[1]
-    norm_bboxes[:,2] = cx / imgsz[0]
+    norm_bboxes[:,2] = cy / imgsz[0]
     norm_bboxes[:,3] = w / imgsz[1]
     norm_bboxes[:,4] = h / imgsz[0]
 
@@ -40,7 +40,7 @@ def to_one_shot_labels(bboxes, imgsz=(256, 256), cellsz=(16,16)):
     out[cell_pos, :] = norm_bboxes
     out = out.reshape(out_shape)
 
-    return out
+    return out, norm_bboxes
 
 def to_bboxes(labels, imgsz=(256,256)):
     if len(labels.shape) == 2:
@@ -213,10 +213,12 @@ class FTFYPatchDataSampler(object):
 
         tar = self.data['targets'][tar_id]
         src = self.data['sources'][src_id]
-        labels = to_one_shot_labels(bbox, src.shape[:2], self.cellsz)[0]
+        labels, norm_bbox = to_one_shot_labels(bbox, src.shape[:2], self.cellsz)
+        labels = labels[0]
+        norm_bbox = norm_bbox[0]
 
         self.sample_idx += 1
-        return src, tar, labels, bbox
+        return src, tar, labels, norm_bbox
 
 def input_fn(
     base_dir,
@@ -233,7 +235,7 @@ def input_fn(
                                 [*src_size, n_channels],
                                 [*tar_size, n_channels],
                                 [cellsz[0]*cellsz[1], n_parameters],
-                                [n_parameters-1]
+                                [n_parameters]
                             ))
             .shuffle(buffer_size=2*batch_size)
             .batch(batch_size=batch_size)
@@ -244,6 +246,7 @@ def input_fn(
 if __name__ == '__main__':
     import matplotlib.pyplot as plt
     from matplotlib.patches import Rectangle
+    from network.loss.ftfy import loss
 
     base_dir = '/home/sungsooha/Desktop/Data/ftfy/sem/train'
     project_dir = 'sources' # ['sources', 'sources_square']
@@ -266,6 +269,11 @@ if __name__ == '__main__':
 
     data_sampler.load_dataset(data_dirs, project_dir, debug=True)
 
+    logits = tf.placeholder(tf.float32, (batch_size, 16, 16, 5*2))
+    obj_loss, noobj_loss, coord_loss = loss(
+        logits, batch_data[2], 2, 5
+    )
+
     fig, (ax1, ax2) = plt.subplots(1, 2)
     h1 = ax1.imshow(np.zeros((256, 256), dtype=np.float32), cmap='gray', vmin=0, vmax=1)
     h2 = ax2.imshow(np.zeros((128, 128), dtype=np.float32), cmap='gray', vmin=0, vmax=1)
@@ -283,7 +291,15 @@ if __name__ == '__main__':
         sess.run(dataset_init)
         try:
             while i_test < max_tests:
-                sources, targets, labels, bboxes = sess.run(batch_data)
+                loss1, loss2, loss3, sources, targets, labels, bboxes = sess.run(
+                    [obj_loss, noobj_loss, coord_loss,*batch_data],
+                    feed_dict={
+                        logits: np.zeros((batch_size, 16, 16, 10), dtype=np.float32)
+                    }
+                )
+                print('object loss: ', loss1)
+                print('noobject loss: ', loss2)
+                print('coord loss: ', loss3)
                 i_test+=1
 
                 for src, tar, label, bbox in zip(sources, targets, labels, bboxes):
@@ -300,7 +316,8 @@ if __name__ == '__main__':
                     print('from label: ', _bbox)
 
 
-                    plt.pause(5)
+
+                    plt.pause(10)
 
 
         except tf.errors.OutOfRangeError:

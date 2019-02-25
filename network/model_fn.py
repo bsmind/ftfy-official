@@ -7,7 +7,7 @@ from network.model.ftfy import Net as FTFY
 
 from network.train import TripletSpec, FTFYSpec
 from network.loss.triplet import batch_offline_triplet_loss, spreadout_triplet_loss
-from network.loss.ftfy import loss as ftfy_loss
+from network.loss.ftfy import loss as ftfy_loss, inference as ftfy_pred
 
 MODE = ['TRAIN', 'TEST']
 LOSS = ['triplet', 'spreadout']
@@ -144,7 +144,7 @@ def ftfy_model_fn(
     feat_shared_batch_layers=True, feat_scope='triplet-net',
     # ftfy
     ftfy_ver='v0', ftfy_scope='ftfy',
-    cell_size=8, n_bbox_estimators=2, n_parameters=5,
+    tar_cell_size=(8,8), src_cell_size=(16,16), n_bbox_estimators=2, n_parameters=5,
     # loss and optimizer
     loss_name='rms', obj_scale=1.0, noobj_scale=0.5, coord_scale=5.0,
     use_regularization_loss=False,
@@ -173,12 +173,13 @@ def ftfy_model_fn(
 
     # todo: use ftfy_ver, if other versions are available...
     ftfy_builder = FTFY(name=ftfy_scope,
-                        cell_size=cell_size,
+                        cell_size=tar_cell_size,
                         n_bbox_estimators=n_bbox_estimators,
                         n_parameters=n_parameters)
 
     logits = ftfy_builder(src_feat, tar_feat, ftfy_is_training, trainable=True)
-
+    pred_confidence, pred_bboxes = ftfy_pred(logits, n_bbox_estimators, n_parameters,
+                                             *src_cell_size)
 
     obj_loss, noobj_loss, coord_loss, total_loss = None, None, None, None
     regularization_loss = None
@@ -188,7 +189,7 @@ def ftfy_model_fn(
         # todo: get loss function, if other losses are available
         # note that variable_scope for ftfy_loss is defined internally
         obj_loss, noobj_loss, coord_loss = ftfy_loss(
-            logits, labels, n_bbox_estimators, n_parameters
+            logits, labels, n_bbox_estimators, n_parameters, *src_cell_size
         )
         obj_loss = obj_scale * obj_loss
         noobj_loss = noobj_scale * noobj_loss
@@ -209,6 +210,7 @@ def ftfy_model_fn(
     return FTFYSpec(
         sources, targets, labels, bboxes,
         src_feat, tar_feat, logits,
+        pred_confidence, pred_bboxes,
         train_op=train_op,
         obj_loss=obj_loss, noobj_loss=noobj_loss, coord_loss=coord_loss,
         regularization_loss=regularization_loss, total_loss=total_loss,
