@@ -249,7 +249,7 @@ if __name__ == '__main__':
     from network.loss.ftfy import loss
 
     base_dir = '/home/sungsooha/Desktop/Data/ftfy/sem/train'
-    project_dir = 'sources' # ['sources', 'sources_square']
+    project_dir = 'sources_shift' # ['sources', 'sources_square', 'sources_shift']
     batch_size = 4
 
     data_dirs = []
@@ -274,12 +274,18 @@ if __name__ == '__main__':
         logits, batch_data[2], 2, 5
     )
 
-    fig, (ax1, ax2) = plt.subplots(1, 2)
-    h1 = ax1.imshow(np.zeros((256, 256), dtype=np.float32), cmap='gray', vmin=0, vmax=1)
-    h2 = ax2.imshow(np.zeros((128, 128), dtype=np.float32), cmap='gray', vmin=0, vmax=1)
-
-    rect = Rectangle((0,0), 256, 256, linewidth=1, edgecolor='r', facecolor='none')
-    ax1.add_patch(rect)
+    fig, ax = plt.subplots(2, batch_size)
+    h_src, h_tar, rect = [], [], []
+    for _ax in ax[0]:
+        h = _ax.imshow(np.zeros((256, 256), dtype=np.float32), cmap='gray', vmin=0, vmax=1)
+        h_src.append(h)
+    for _ax in ax[1]:
+        h = _ax.imshow(np.zeros((128, 128), dtype=np.float32), cmap='gray', vmin=0, vmax=1)
+        h_tar.append(h)
+    for _ax in ax[0]:
+        _rect = Rectangle((0,0), 256, 256, linewidth=1, edgecolor='r', facecolor='none')
+        _ax.add_patch(_rect)
+        rect.append(_rect)
 
     plt.ion()
     plt.show()
@@ -291,33 +297,36 @@ if __name__ == '__main__':
         sess.run(dataset_init)
         try:
             while i_test < max_tests:
-                loss1, loss2, loss3, sources, targets, labels, bboxes = sess.run(
-                    [obj_loss, noobj_loss, coord_loss,*batch_data],
+                sources, targets, labels, bboxes = sess.run(
+                    [*batch_data],
                     feed_dict={
                         logits: np.zeros((batch_size, 16, 16, 10), dtype=np.float32)
                     }
                 )
-                print('object loss: ', loss1)
-                print('noobject loss: ', loss2)
-                print('coord loss: ', loss3)
                 i_test+=1
 
-                for src, tar, label, bbox in zip(sources, targets, labels, bboxes):
-                    h1.set_data(np.squeeze(src))
-                    h2.set_data(np.squeeze(tar))
+                for idx in range(len(sources)):
+                    src = sources[idx]
+                    tar = targets[idx]
+                    label = labels[idx]
+                    bbox = bboxes[idx]
 
-                    cx, cy, w, h = bbox
-                    rect.set_xy((cx - w/2, cy - h/2))
-                    rect.set_width(w)
-                    rect.set_height(h)
+                    h_src[idx].set_data(np.squeeze(src))
+                    h_tar[idx].set_data(np.squeeze(tar))
+
+                    #print(bbox)
+                    _, cx, cy, w, h = bbox * 256
+                    rect[idx].set_xy((cx - 0.5 - w/2, cy - 0.5 - h/2))
+                    rect[idx].set_width(w)
+                    rect[idx].set_height(h)
 
                     _bbox = to_bboxes(label)
-                    print('bbox: ', bbox)
+                    print('bbox: ', [cx - 0.5, cy - 0.5, w, h])
                     print('from label: ', _bbox)
 
 
 
-                    plt.pause(10)
+                plt.pause(5)
 
 
         except tf.errors.OutOfRangeError:
