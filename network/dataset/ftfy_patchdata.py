@@ -196,6 +196,13 @@ class FTFYPatchDataSampler(object):
 
         for i in tqdm(range(len(self.data['sources'])), desc='Normalizing sources'):
             self.data['sources'][i] = (self.data['sources'][i] - mean) / std
+            
+    def reset(self):
+        self.sample_idx = 0
+        ind = np.arange(self.n_samples)
+        np.random.shuffle(ind)
+        self.data['datamap'] = self.data['datamap'][ind]
+        self.data['bboxes'] = self.data['bboxes'][ind]
 
     def reset(self):
         self.sample_idx = 0
