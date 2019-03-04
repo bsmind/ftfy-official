@@ -43,7 +43,7 @@ class IoUPatchDataSamplerExt(IoUPatchDataSampler):
             self.data['matches'] = self.train_matches
             self.data['retrieval'] = self.train_retrievals
             self.data['labels'] = self.train_labels
-            #self.max_n_matched_pairs = self.train_n_matches
+            self.max_n_matched_pairs = self.train_n_matches
             self.n_matches = self.train_n_matches
             self.n_retrievals = self.train_n_retrievals
             self.eval_mode = True
@@ -51,6 +51,7 @@ class IoUPatchDataSamplerExt(IoUPatchDataSampler):
             self.data['matches'] = self.test_matches
             self.data['retrieval'] = self.test_retrievals
             self.data['labels'] = self.test_labels
+            self.max_n_matched_pairs = self.test_n_matches
             self.n_matches = self.test_n_matches
             self.n_retrievals = self.test_n_retrievals
             self.eval_mode = False
