@@ -30,7 +30,8 @@ param = get_default_param(mode='AUSTIN', log_dir=log_dir)
 
 
 # In[ ]:
-sem_data_dir = '/home/sungsooha/Desktop/Data/ftfy/sem/train'
+#sem_data_dir = '/home/sungsooha/Desktop/Data/ftfy/sem/train'
+sem_data_dir = './Data/sem/train'
 sem_train_datasets = []
 for f in os.listdir(sem_data_dir):
     if os.path.isdir(os.path.join(sem_data_dir,f)):
@@ -42,7 +43,7 @@ print(sem_train_datasets)
 param.data_dir = sem_data_dir
 param.train_datasets = 'sem' # we will define sem dataset separately
 param.test_datasets = None #'human_patch'
-param.batch_size = 8 # 64 for v100
+param.batch_size = 64 # 64 for v100
 param.n_epoch = 100
 param.n_triplet_samples = 500000
 param.train_log_every   =   5000
@@ -130,8 +131,8 @@ for epoch in range(param.n_epoch):
     tf.logging.info('-'*50)
     tf.logging.info('TRAIN {:d}, {:s} start ...'.format(epoch, param.train_datasets))
     data_sampler.set_mode(0)
-    #train_data_sampler.set_n_triplet_samples(param.n_triplet_samples)
-    data_sampler.set_n_triplet_samples(1000)
+    data_sampler.set_n_triplet_samples(param.n_triplet_samples)
+    #data_sampler.set_n_triplet_samples(1000)
     loss = estimator.train(
         dataset_initializer=dataset_init,
         log_every=param.train_log_every
@@ -144,7 +145,7 @@ for epoch in range(param.n_epoch):
     tf.logging.info('TEST {:d}, {:s} TRAIN start ...'.format(epoch, param.train_datasets))
     data_sampler.set_eval_mode(True)
     data_sampler.set_mode(1)
-    data_sampler.set_n_matched_pairs(1000)
+    #data_sampler.set_n_matched_pairs(1000)
     test_match = estimator.run_match(dataset_init)
     fpr95 = fpr(test_match.labels, test_match.scores, recall_rate=0.95)
     train_fpr95.append(fpr95)
@@ -167,7 +168,7 @@ for epoch in range(param.n_epoch):
     tf.logging.info('TEST {:d}, {:s} TEST start ...'.format(epoch, param.train_datasets))
     data_sampler.set_eval_mode(False)
     data_sampler.set_mode(1)
-    data_sampler.set_n_matched_pairs(1000)
+    #data_sampler.set_n_matched_pairs(1000)
     test_match = estimator.run_match(dataset_init)
     fpr95 = fpr(test_match.labels, test_match.scores, recall_rate=0.95)
     test_fpr95.append(fpr95)
