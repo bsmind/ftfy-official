@@ -21,11 +21,11 @@ class IoUPatchDataSampler(PatchDataSampler):
         self.max_n_triplet_samples = 0
         self.max_n_matched_pairs = 0
 
-    def set_n_triplet_samples(self, n):
-        self.n_triplet_samples = min(n, self.max_n_triplet_samples)
+    # def set_n_triplet_samples(self, n):
+    #     self.n_triplet_samples = min(n, self.max_n_triplet_samples)
 
-    def set_n_matched_pairs(self, n):
-        self.n_matches = min(2*n, self.max_n_matched_pairs)
+    # def set_n_matched_pairs(self, n):
+    #     self.n_matches = min(2*n, self.max_n_matched_pairs)
 
     def get_patch_by_retrieval_idx(self, idx):
         patch_idx = self.data['retrieval'][idx][0]
@@ -54,6 +54,7 @@ class IoUPatchDataSampler(PatchDataSampler):
         self.n_triplet_samples = len(self.index_a)
         self.max_n_triplet_samples = self.n_triplet_samples
         self.sample_idx = 0
+        #return self.index_a, index_p, index_n
 
     def _load_matched_pairs(self, dir_name, fname='matched_50000.txt'):
         matched_fname = os.path.join(self.base_dir, dir_name, fname)
@@ -70,6 +71,8 @@ class IoUPatchDataSampler(PatchDataSampler):
         self.n_matches = len(matches)
         self.max_n_matched_pairs = self.n_matches
 
+        return matches
+
     def _load_retrieval_set(self, dir_name, fname='retrieval.txt'):
         retrieval_fname = os.path.join(self.base_dir, dir_name, fname)
         assert os.path.isfile(retrieval_fname), 'Cannot find %s!' % fname
@@ -84,9 +87,13 @@ class IoUPatchDataSampler(PatchDataSampler):
                 labels.append(label)
                 counter += 1
 
-        self.data['retrieval'] = np.asarray(retrievals)
-        self.data['labels'] = np.asarray(labels)
+        retrievals = np.asarray(retrievals)
+        labels = np.asarray(labels)
+        self.data['retrieval'] = retrievals
+        self.data['labels'] = labels
         self.n_retrievals = len(labels)
+
+        return retrievals, labels
 
 
     def load_dataset(self, dir_name, ext='bmp', patch_size=(64, 64), n_channels=1, debug=True):

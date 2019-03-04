@@ -343,24 +343,36 @@ class FTFYEstimator(object):
         self.sess.run(tf.global_variables_initializer())
         self.sess.run(tf.local_variables_initializer())
 
+        saver = None
+        model_path = None
+        epoch = None
         if feat_model_path is not None:
             feat_vars = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope=feat_scope)
             saver = tf.train.Saver(feat_vars)
-            ckpt = tf.train.get_checkpoint_state(feat_model_path)
+            model_path = feat_model_path
+            epoch = feat_epoch
+
+        if ftfy_model_path is not None:
+            saver = tf.train.Saver()
+            model_path = ftfy_model_path
+            epoch = ftfy_epoch
+
+        if saver is not None:
+            ckpt = tf.train.get_checkpoint_state(model_path)
             if ckpt is None:
-                raise ValueError('Cannot find a checkpoint: %s' % feat_model_path)
+                raise ValueError('Cannot find a checkpoint: %s' % model_path)
             model_checkpoint_path = ckpt.model_checkpoint_path
-            if feat_epoch is not None:
+            if epoch is not None:
                 all_model_checkpoint_paths = ckpt.all_model_checkpoint_paths
-                if 0 <= feat_epoch and feat_epoch < len(all_model_checkpoint_paths):
-                    model_checkpoint_path = all_model_checkpoint_paths[feat_epoch]
+                if epoch < len(all_model_checkpoint_paths):
+                    model_checkpoint_path = all_model_checkpoint_paths[epoch]
             saver.restore(self.sess, model_checkpoint_path)
+            
 
         self.saver = tf.train.Saver(max_to_keep=100)
         if save_dir is not None:
             self.save_dir = save_dir
             
-        # todo: resotre from ftfy checkpoint
 
     def train(self, dataset_initializer=None, log_every=0, n_max_steps=0):
         if self.spec.train_op is None or self.spec.total_loss is None:
@@ -445,7 +457,7 @@ class FTFYEstimator(object):
                 all_bboxes.append(bboxes[..., 1:])
                 step += batch_size
 
-                if step >= n_max_test:
+                if n_max_test > 0 and step >= n_max_test:
                     tf.logging.info("Terminate with {:d}".format(step))
                     break
 
