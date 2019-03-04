@@ -66,6 +66,64 @@ def load_sem_info(base_dir, data_dir, fname='info.txt'):
 
     return fname_to_gid, gid_info, pid_info
 
+def load_info(base_dir, data_dir, fname='info.txt', base_dir_file=None):
+    info_path = os.path.join(base_dir, data_dir, fname)
+    assert os.path.exists(info_path), 'Cannot find a file: %s' % info_path
+
+    fname_to_gid = dict()
+    gid_info = dict()
+    pid_info = dict()
+
+    with open(info_path, 'r') as f:
+        for line in f:
+            tokens = line.split()
+
+            img_fname = tokens[0]
+            pid = int(tokens[1])
+            gid = int(tokens[2])
+            iouid = int(tokens[3])
+            cx = float(tokens[4])
+            cy = float(tokens[5])
+            factor = int(tokens[6])
+            side = 130#13 * (10 / factor)
+            #psz = psz_low * (last_down / factor)
+
+            x0 = cx - side/2
+            x1 = cx + side/2
+            y0 = cy - side/2
+            y1 = cy + side/2
+
+            if base_dir_file is not None:
+                img_fname = os.path.join(base_dir_file, os.path.basename(img_fname))
+
+            if fname_to_gid.get(img_fname, None) is None:
+                fname_to_gid[img_fname] = []
+            if gid not in fname_to_gid[img_fname]:
+                fname_to_gid[img_fname].append(gid)
+
+            pid_info[pid] = (cx, cy, side, factor, iouid)
+
+            if gid_info.get(gid, None) is None:
+                gid_info[gid] = dict(
+                    pids=[],
+                    factors=[],
+                    x0=np.inf,
+                    x1=-np.inf,
+                    y0=np.inf,
+                    y1=-np.inf
+                )
+            gid_info[gid]['pids'].append(pid)
+
+            if factor not in gid_info[gid]['factors']:
+                gid_info[gid]['factors'].append(factor)
+
+            gid_info[gid]['x0'] = min(x0, gid_info[gid].get('x0'))
+            gid_info[gid]['x1'] = max(x1, gid_info[gid].get('x1'))
+            gid_info[gid]['y0'] = min(y0, gid_info[gid].get('y0'))
+            gid_info[gid]['y1'] = max(y1, gid_info[gid].get('y1'))
+
+    return fname_to_gid, gid_info, pid_info
+
 # for debugging
 def load_image_fnames(base_dir, dir_name, ext='bmp'):
     files = []
@@ -112,7 +170,8 @@ def load_patches(dir_name, fnames, patch_size, n_channels, n_patches=None):
 def generate_source_images(
         fname_to_gid, gid_info, pid_info,
         n_blocks=3, make_square=True, src_size=256,
-        debug=False, output_dir=None, is_sem=True, do_src_shift=True
+        debug=False, output_dir=None, is_sem=True, do_src_shift=True,
+        fixed_factors=None
 ):
     data_manager = None
     if not debug and output_dir is not None:
@@ -127,6 +186,10 @@ def generate_source_images(
         if is_sem:
             im = im[:-110,:]
         im_h, im_w = im.shape
+
+        if fixed_factors is not None:
+            ms_im = get_multiscale(im, fixed_factors, debug=debug)
+            ms_im_f = [get_interpolator(_im) for _im in ms_im]
 
         # plt.imshow(im, cmap='gray')
         # plt.show()
@@ -144,9 +207,10 @@ def generate_source_images(
                 blk_height = blk_side
 
             # create multi-scaled images
-            ms_im = get_multiscale(im, factors, debug=debug)
-            ms_im_f = [get_interpolator(_im) for _im in ms_im]
-            # ms_im_shape = [_im.shape for _im in ms_im]
+            if fixed_factors is None:
+                ms_im = get_multiscale(im, factors, debug=debug)
+                ms_im_f = [get_interpolator(_im) for _im in ms_im]
+                # ms_im_shape = [_im.shape for _im in ms_im]
 
             # determine source image size and upper-left corner position
             src_w = int(n_blocks * blk_width)
@@ -253,6 +317,7 @@ def generate_source_images(
                 data_manager.add_patches(ms_src)
                 data_manager.add_info(info)
             src_counter += len(ms_src)
+
     if data_manager is not None:
         data_manager.dump()
     print('# source images: %s' % src_counter)
@@ -260,28 +325,42 @@ def generate_source_images(
 if __name__ == '__main__':
     np.random.seed(2019)
 
-    base_dir = '/home/sungsooha/Desktop/Data/ftfy/sem/train'
-    data_dir = 'set_065'
+    #base_dir = '/home/sungsooha/Desktop/Data/ftfy/sem/train'
+    base_dir = '/home/sungsooha/Desktop/Data/ftfy/austin'
+    base_dir_file = os.path.join(base_dir, 'campus')
+    data_dir = 'campus_patch'
 
     n_blocks = 3 # n x n blocks
     src_size = 256
-    make_square = True
-    is_sem = True
-    do_src_shift = True
+    make_square = False
+    is_sem = False
+    do_src_shift = False
+    fixed_factors = None
 
-    debug = False
-    output_dir = os.path.join(base_dir, data_dir, 'sources_shift')
+    is_v100_path = True
 
+    debug = True
+    output_dir = os.path.join(base_dir, data_dir, 'sources')
+
+    if not is_sem:
+        PATCHES_PER_COL = 6
+        PATCHES_PER_ROW = 13
+        fixed_factors = [1, 2, 4, 6, 8, 10]
 
 
     # ------------------------------------------------------------------------
     # Load info
     # ------------------------------------------------------------------------
-    fname_to_gid, gid_info, pid_info = load_sem_info(base_dir, data_dir)
+    if is_sem:
+        fname_to_gid, gid_info, pid_info = load_sem_info(base_dir, data_dir)
+    else:
+        fname_to_gid, gid_info, pid_info = load_info(base_dir, data_dir, base_dir_file=base_dir_file)
 
     if debug:
-        patch_fnames = load_image_fnames(base_dir, os.path.join(data_dir, 'patches'))
-        patches = load_patches(data_dir, patch_fnames, (128, 128), 1)
+        dir_name = os.path.join(data_dir, 'patches') if is_sem else data_dir
+        n_patches = len(list(pid_info.keys()))
+        patch_fnames = load_image_fnames(base_dir, dir_name)
+        patches = load_patches(data_dir, patch_fnames, (128, 128), 1, n_patches)
 
     print('Data dir : %s' % data_dir)
     print('# images : %s' % len(list(fname_to_gid.keys())))
@@ -289,19 +368,22 @@ if __name__ == '__main__':
     print('# patches: %s' % len(list(pid_info.keys())))
     #print('patches  : {}'.format(patches.shape))
 
+
+
     # ------------------------------------------------------------------------
     # Generate source collection
     # ------------------------------------------------------------------------
-    generate_source_images(
-        fname_to_gid=fname_to_gid,
-        gid_info=gid_info,
-        pid_info=pid_info,
-        n_blocks=n_blocks,
-        make_square=make_square,
-        src_size=src_size,
-        debug=debug,
-        output_dir=output_dir,
-        is_sem=is_sem,
-        do_src_shift=do_src_shift
-    )
+    # generate_source_images(
+    #     fname_to_gid=fname_to_gid,
+    #     gid_info=gid_info,
+    #     pid_info=pid_info,
+    #     n_blocks=n_blocks,
+    #     make_square=make_square,
+    #     src_size=src_size,
+    #     debug=debug,
+    #     output_dir=output_dir,
+    #     is_sem=is_sem,
+    #     do_src_shift=do_src_shift,
+    #     fixed_factors=fixed_factors
+    # )
 

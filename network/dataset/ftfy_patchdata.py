@@ -37,6 +37,8 @@ def to_one_shot_labels(bboxes, imgsz=(256, 256), cellsz=(16,16)):
 
     out_shape = (n_bboxes, n_cells, 5)
     out = np.zeros((n_bboxes*n_cells, 5), dtype=np.float32)
+
+    # todo: with sources_shift dataset, the central position could be out of index...
     out[cell_pos, :] = norm_bboxes
     out = out.reshape(out_shape)
 
@@ -195,6 +197,13 @@ class FTFYPatchDataSampler(object):
         for i in tqdm(range(len(self.data['sources'])), desc='Normalizing sources'):
             self.data['sources'][i] = (self.data['sources'][i] - mean) / std
 
+    def reset(self):
+        self.sample_idx = 0
+        ind = np.arange(self.n_samples)
+        np.random.shuffle(ind)
+        self.data['datamap'] = self.data['datamap'][ind]
+        self.data['bboxes'] = self.data['bboxes'][ind]
+
     def __iter__(self):
         return self
 
@@ -248,15 +257,26 @@ if __name__ == '__main__':
     from matplotlib.patches import Rectangle
     from network.loss.ftfy import loss
 
-    base_dir = '/home/sungsooha/Desktop/Data/ftfy/sem/train'
-    project_dir = 'sources_shift' # ['sources', 'sources_square', 'sources_shift']
+    is_sem = False
+    if is_sem:
+        base_dir = '/home/sungsooha/Desktop/Data/ftfy/sem/train'
+        project_dir = 'sources' # ['sources', 'sources_square', 'sources_shift']
+        tar_dir = 'patches'
+    else:
+        base_dir = '/home/sungsooha/Desktop/Data/ftfy/austin'
+        project_dir = 'campus_sources'
+        tar_dir = 'campus_patch'
+
     batch_size = 4
 
-    data_dirs = []
-    for data_dir in os.listdir(base_dir):
-        if os.path.isdir(os.path.join(base_dir, data_dir)):
-            data_dirs.append(data_dir)
-    data_dirs = sorted(data_dirs)
+    if is_sem:
+        data_dirs = []
+        for data_dir in os.listdir(base_dir):
+            if os.path.isdir(os.path.join(base_dir, data_dir)):
+                data_dirs.append(data_dir)
+        data_dirs = sorted(data_dirs)
+    else:
+        data_dirs = ['.']
 
     with tf.device('/cpu:0'), tf.name_scope('input'):
         dataset, data_sampler = input_fn(base_dir, batch_size=batch_size)
@@ -267,7 +287,11 @@ if __name__ == '__main__':
         dataset_init = data_iterator.make_initializer(dataset)
         batch_data = data_iterator.get_next()
 
-    data_sampler.load_dataset(data_dirs, project_dir, debug=True)
+    if is_sem:
+        data_sampler.load_dataset(data_dirs, project_dir, debug=True)
+    else:
+        data_sampler.load_dataset(data_dirs, project_dir, tar_dir,
+                                  tar_per_col=6, tar_per_row=13)
 
     logits = tf.placeholder(tf.float32, (batch_size, 16, 16, 5*2))
     obj_loss, noobj_loss, coord_loss = loss(
@@ -326,7 +350,7 @@ if __name__ == '__main__':
 
 
 
-                plt.pause(5)
+                plt.pause(20)
 
 
         except tf.errors.OutOfRangeError:

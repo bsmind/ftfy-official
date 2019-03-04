@@ -3,12 +3,12 @@ import utils.data as DATA
 
 if __name__ == '__main__':
     base_dir = '/home/sungsooha/Desktop/Data/ftfy/austin'
-    data_dir = 'scene'#''campus'
+    data_dir = 'campus'#''campus'
 
-    task_1 = False # create multi-scaled patch sets
+    task_1 = True # create multi-scaled patch sets
     task_2 = False # generate random triplet examples out of the patch sets
     task_3 = False # generate random matched examples out of the patch sets
-    task_4 = True # generate random image retrieval examples out of the patch sets
+    task_4 = False # generate random image retrieval examples out of the patch sets
 
     psz_low = 13 # patch size at the lowest resolution (scale)
     psz_final = 128
