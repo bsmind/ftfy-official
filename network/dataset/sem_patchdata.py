@@ -21,11 +21,11 @@ class IoUPatchDataSampler(PatchDataSampler):
         self.max_n_triplet_samples = 0
         self.max_n_matched_pairs = 0
 
-    # def set_n_triplet_samples(self, n):
-    #     self.n_triplet_samples = min(n, self.max_n_triplet_samples)
+    def set_n_triplet_samples(self, n):
+        self.n_triplet_samples = min(n, self.max_n_triplet_samples)
 
-    # def set_n_matched_pairs(self, n):
-    #     self.n_matches = min(2*n, self.max_n_matched_pairs)
+    def set_n_matched_pairs(self, n):
+        self.n_matches = min(2*n, self.max_n_matched_pairs)
 
     def get_patch_by_retrieval_idx(self, idx):
         patch_idx = self.data['retrieval'][idx][0]
