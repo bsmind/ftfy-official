@@ -180,7 +180,7 @@ class TripletEstimator(object):
 
         return TripletOutputSpec(features, x0, y0, images)
 
-    def run_match(self, dataset_initializer=None):
+    def run_match(self, dataset_initializer=None, info_parser=None):
         """
         get feature vectors for matching evaluation...
             a_feat: feature vector for image 1
@@ -278,12 +278,203 @@ class TripletEstimator(object):
             save_path = os.path.join(self.save_dir, name)
             save_path = self.saver.save(self.sess, save_path, global_step=global_step)
             tf.logging.info('Save checkpoint @ {}'.format(save_path))
+
+class FTFYSpec(object):
+    def __init__(
+            self,
+            sources, targets, labels, bboxes,
+            src_feat, tar_feat, logits,
+            pred_confidene, pred_bboxes,
+            train_op=None,
+            obj_loss=None, noobj_loss=None, coord_loss=None,
+            regularization_loss=None, total_loss=None,
+            global_step=None,
+            train_feed_dict=None,
+            test_feed_dict=None,
+            feat_net=None, ftfy_net=None
+    ):
+        self.sources = sources
+        self.targets = targets
+        self.labels = labels
+        self.bboxes = bboxes
+
+        self.src_feat = src_feat
+        self.tar_feat = tar_feat
+        self.logits = logits
+
+        self.pred_confidence = pred_confidene
+        self.pred_bboxes = pred_bboxes
+
+        self.train_op = train_op
+        self.obj_loss = obj_loss
+        self.noobj_loss = noobj_loss
+        self.coord_loss = coord_loss
+        self.regularization_loss = regularization_loss
+        self.total_loss = total_loss
+        self.global_step = global_step
+
+        self.train_feed_dict = train_feed_dict
+        self.test_feed_dict = test_feed_dict
+
+        self.feat_net = feat_net
+        self.ftfy_net = ftfy_net
+
+class FTFYEstimator(object):
+    def __init__(
+            self,
+            spec:FTFYSpec,
+
+            feat_model_path=None, feat_scope=None, feat_epoch=None,
+            ftfy_model_path=None, ftfy_scope=None, ftfy_epoch=None,
+            save_dir=None
+    ):
+        self.spec = spec
+
+        config = tf.ConfigProto(
+            allow_soft_placement=True,
+            log_device_placement=False,
+            intra_op_parallelism_threads=8,
+            inter_op_parallelism_threads=0
+        )
+        config.gpu_options.allow_growth = True
+        self.sess = tf.Session(config=config)
+
+        # initialize
+        self.sess.run(tf.global_variables_initializer())
+        self.sess.run(tf.local_variables_initializer())
+
+        saver = None
+        model_path = None
+        epoch = None
+        if feat_model_path is not None:
+            feat_vars = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope=feat_scope)
+            saver = tf.train.Saver(feat_vars)
+            model_path = feat_model_path
+            epoch = feat_epoch
+
+        if ftfy_model_path is not None:
+            saver = tf.train.Saver()
+            model_path = ftfy_model_path
+            epoch = ftfy_epoch
+
+        if saver is not None:
+            ckpt = tf.train.get_checkpoint_state(model_path)
+            if ckpt is None:
+                raise ValueError('Cannot find a checkpoint: %s' % model_path)
+            model_checkpoint_path = ckpt.model_checkpoint_path
+            if epoch is not None:
+                all_model_checkpoint_paths = ckpt.all_model_checkpoint_paths
+                if epoch < len(all_model_checkpoint_paths):
+                    model_checkpoint_path = all_model_checkpoint_paths[epoch]
+            saver.restore(self.sess, model_checkpoint_path)
             
+
+        self.saver = tf.train.Saver(max_to_keep=100)
+        if save_dir is not None:
+            self.save_dir = save_dir
             
+
+    def train(self, dataset_initializer=None, log_every=0, n_max_steps=0):
+        if self.spec.train_op is None or self.spec.total_loss is None:
+            raise ValueError("train_op and total_loss are undefined!")
+
+        train_step = [self.spec.train_op, self.spec.total_loss]
+        loss_names = ['total loss']
+        if self.spec.obj_loss is not None:
+            train_step.append(self.spec.obj_loss)
+            loss_names.append('obj loss')
+        if self.spec.noobj_loss is not None:
+            train_step.append(self.spec.noobj_loss)
+            loss_names.append('noobj loss')
+        if self.spec.coord_loss is not None:
+            train_step.append(self.spec.coord_loss)
+            loss_names.append('coord loss')
+        if self.spec.regularization_loss is not None:
+            train_step.append(self.spec.regularization_loss)
+            loss_names.append('L2 reg')
+
+        step = 0
+        avg_losses = np.zeros(len(loss_names), dtype=np.float32)
+        if dataset_initializer is not None:
+            self.sess.run(dataset_initializer)
+
+        try:
+            while True:
+                outputs = self.sess.run(train_step, feed_dict=self.spec.train_feed_dict)
+                for i in range(len(loss_names)):
+                    avg_losses[i] += outputs[i+1]
+
+                step += 1
+                if log_every > 0 and step % log_every == 0:
+                    tf.logging.info("step: {:d}".format(step))
+                    for name, value in zip(loss_names, avg_losses):
+                        tf.logging.info("Avg. {:s}: {:.6f}".format(name, value/step))
+
+                if n_max_steps > 0 and step >= n_max_steps:
+                    tf.logging.info('Terminated with step: {:d}'.format(step))
+                    break
+
+        except tf.errors.OutOfRangeError:
+            tf.logging.info("Exhausted all data in the dataset ({:d})!".format(step))
+
+        avg_losses /= step
+        tf.logging.info("Final avg. losses:")
+        for name, value in zip(loss_names, avg_losses):
+            tf.logging.info("Avg. {:s}: {:.6f}".format(name, value))
+
+        return avg_losses[0]
+
+    def run(self, dataset_initializer=None, top_k=0, n_max_test=1000):
+
+        fetches = [self.spec.pred_confidence, self.spec.pred_bboxes, self.spec.bboxes]
+
+        if dataset_initializer is not None:
+            self.sess.run(dataset_initializer)
+
+        step = 0
+        all_confidences, all_pred_bboxes, all_bboxes = [], [], []
+
+        try:
+            while True:
+                confidence, pred_bboxes, bboxes \
+                    = self.sess.run(fetches, feed_dict=self.spec.test_feed_dict)
+
+                batch_size = confidence.shape[0]
+
+                batch_ind = np.argsort(confidence)
+                for i in range(batch_size):
+                    ind = batch_ind[i]
+                    ind = ind[::-1]
+                    confidence[i] = confidence[i, ind]
+                    pred_bboxes[i] = pred_bboxes[i, ind, :]
+
+                if top_k > 0:
+                    confidence = confidence[:, :top_k]
+                    pred_bboxes = pred_bboxes[:, :top_k]
+
+                all_confidences.append(confidence)
+                all_pred_bboxes.append(pred_bboxes)
+                all_bboxes.append(bboxes[..., 1:])
+                step += batch_size
+
+                if n_max_test > 0 and step >= n_max_test:
+                    tf.logging.info("Terminate with {:d}".format(step))
+                    break
+
+        except tf.errors.OutOfRangeError:
+            tf.logging.info("Exhausted all data in the dataset ({:d})!".format(step))
+
+        all_confidences = np.concatenate(all_confidences, axis=0)
+        all_pred_bboxes = np.concatenate(all_pred_bboxes, axis=0)
+        all_bboxes = np.concatenate(all_bboxes, axis=0)
+
+        return all_confidences, all_pred_bboxes, all_bboxes
             
-            
-            
-            
+    def save(self, name, global_step=None):
+        if self.saver is not None:
+            save_path = os.path.join(self.save_dir, name)
+            save_path = self.saver.save(self.sess, save_path, global_step=global_step)
+            tf.logging.info('Save checkpoint @ {}'.format(save_path))
             
             
             
