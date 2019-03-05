@@ -104,9 +104,8 @@ class PatchExtractor(object):
         return patches
 
 class PatchDataManager(object):
-    def __init__(self, output_dir,
-                 patches_per_col=10, patches_per_row=10,
-                 info_fname='info.txt'):
+    def __init__(self, output_dir, info_fname:list,
+                 patches_per_col=10, patches_per_row=10):
         if not os.path.exists(output_dir):
             os.makedirs(output_dir)
 
@@ -121,7 +120,7 @@ class PatchDataManager(object):
         fnames = get_filenames(output_dir, 'bmp')
         self.counter = len(fnames)
 
-        self.file = open(os.path.join(self.output_dir, info_fname), 'w')
+        self.file = [open(os.path.join(self.output_dir, fname), 'w') for fname in info_fname]
 
     def _save_image(self, im, prefix='patchset'):
         im *= 255
@@ -130,11 +129,11 @@ class PatchDataManager(object):
         imsave(os.path.join(self.output_dir, fname), im)
         self.counter += 1
 
-    def add(self, patches:list, info:list):
+    def add(self, patches:list, info:list, fidx=0):
         assert len(patches) == len(info), 'Not matched numbers in patch list and info list.'
         for patch, _info in zip(patches, info):
             self.patches_col.append(patch)
-            self.file.write(_info)
+            self.file[fidx].write(_info)
 
             if len(self.patches_col) == self.patches_per_col:
                 self.patches_row.append(np.hstack(self.patches_col))
@@ -144,7 +143,7 @@ class PatchDataManager(object):
                 im = np.vstack(self.patches_row)
                 self._save_image(im)
                 self.patches_row = []
-        self.file.flush()
+        self.file[fidx].flush()
 
     def add_patches(self, patches:list):
         for patch in patches:
@@ -159,10 +158,10 @@ class PatchDataManager(object):
                 self._save_image(im)
                 self.patches_row = []
 
-    def add_info(self, info:list):
+    def add_info(self, info:list, fidx=0):
         for _info in info:
-            self.file.write(_info)
-        self.file.flush()
+            self.file[fidx].write(_info)
+        self.file[fidx].flush()
 
     def dump(self):
         if len(self.patches_col) > 0:

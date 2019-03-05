@@ -64,7 +64,7 @@ def load_sem_info(base_dir, data_dir, fname='info.txt'):
             gid_info[gid]['y0'] = min(y0, gid_info[gid].get('y0'))
             gid_info[gid]['y1'] = max(y1, gid_info[gid].get('y1'))
 
-    return fname_to_gid, gid_info, pid_info
+    return (fname_to_gid, gid_info, pid_info), len(fname_to_gid), len(gid_info), len(pid_info)
 
 def load_info(base_dir, data_dir, fname='info.txt', base_dir_file=None):
     info_path = os.path.join(base_dir, data_dir, fname)
