@@ -32,7 +32,7 @@ param.optimizer_name = 'Grad'
 param.obj_scale = 1.0
 param.noobj_scale = 0.5
 param.coord_scale = 5.0
-param.decay_steps = 100000 # 60000 for v100
+param.decay_steps = 20000 # 60000 for v100
 param.train_log_every = 1000
 
 param.n_epoch = 100

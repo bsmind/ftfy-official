@@ -27,7 +27,7 @@ def generate_source_images(
     src_counter = 0
     for fname, gIDs in tqdm(fname_to_gid.items(), desc='Generate source collection'):
         im = imread(fname, as_gray=True)
-        im /= 255.
+        #im /= 255.
         # for SEM image, need to crop bottom rows to exclude information strings...
         if is_sem: im = im[:-110,:]
         im_h, im_w = im.shape
