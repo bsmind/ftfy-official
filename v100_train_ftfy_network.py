@@ -1,10 +1,7 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# In[ ]:
 import os
-#import matplotlib.pyplot as plt
-
 import pickle
 import tensorflow as tf
 import numpy as np
@@ -16,14 +13,12 @@ from network.train import FTFYEstimator
 
 from utils.eval import calc_iou_k, ftfy_retrieval_accuracy
 
-
 # set seed for reproduction
 np.random.seed(2019)
 tf.set_random_seed(2019)
 
-
 # parameters (adjust as needed)
-log_dir = './log/sem_ftfy_full_2'
+log_dir = './log/sem_ftfy_full2'
 param = FTFYParam(ftfy_scope='ftfy', feat_scope='triplet-net', log_dir=log_dir)
 param.is_ftfy_model = False
 param.batch_size = 8 # 32 for v100, 8 for ws
@@ -33,19 +28,18 @@ param.obj_scale = 1.0
 param.noobj_scale = 0.5
 param.coord_scale = 5.0
 param.decay_steps = 100000 # 60000 for v100
-param.train_log_every = 1000
+param.train_log_every = 5000
 
 param.n_epoch = 100
-n_max_tests = 5000 # 5000
-
+n_max_tests = 10000 # 5000
 
 is_sem = True
 if is_sem:
-    #param.data_dir = './Data/sem/train'
-    param.data_dir = '/home/sungsooha/Desktop/Data/ftfy/sem/train'
+    param.data_dir = './Data/sem/train'
+    param.model_path = './log/sem2'
+    #param.data_dir = '/home/sungsooha/Desktop/Data/ftfy/sem/train'
     param.learning_rate = 0.01
-    
-    n_max_steps = 1000 # 0 for v100, sem
+    n_max_steps = 0 # 0 for v100, sem
 else:
     param.data_dir = './Data/austin'
     param.model_path = './log/campus' # './log/sem'
@@ -152,39 +146,44 @@ for epoch in range(param.n_epoch):
     )
     tf.logging.info('-'*50)
 
-    tf.logging.info('-' * 50)
-    tf.logging.info('TEST {:d}, {:s} start ...'.format(epoch, param.train_datasets))
-    data_sampler.set_mode(False)
-    pred_confidences, pred_bboxes, bboxes = estimator.run(
-        dataset_init,top_k=top_k[-1], n_max_test=n_max_tests)
-    iou_k = calc_iou_k(pred_bboxes, bboxes)
-    accuracy = ftfy_retrieval_accuracy(iou_k, top_k, iou_thrs)
+    for test_mode in [True, False]:
+        tf.logging.info('-' * 50)
+        tf.logging.info('TEST {:d}, {:s} {:s} start ...'.format(
+            epoch, 'TRAIN' if test_mode else 'TEST', param.train_datasets))
+        data_sampler.set_mode(test_mode)
+        pred_confidences, pred_bboxes, bboxes = estimator.run(
+            dataset_init,top_k=top_k[-1], n_max_test=n_max_tests)
+        iou_k = calc_iou_k(pred_bboxes, bboxes)
+        accuracy = ftfy_retrieval_accuracy(iou_k, top_k, iou_thrs)
 
-    pred_bboxes = pred_bboxes[:, 0]
-    d_bboxes = np.abs(pred_bboxes - bboxes)
-    src_h, src_w = param.src_size
-    d_bboxes[..., 0] *= src_w
-    d_bboxes[..., 1] *= src_h
-    d_bboxes[..., 2] *= src_w
-    d_bboxes[..., 3] *= src_h
-    d_cx_mean, d_cx_std = np.mean(d_bboxes[..., 0]), np.std(d_bboxes[..., 0])
-    d_cy_mean, d_cy_std = np.mean(d_bboxes[..., 1]), np.std(d_bboxes[..., 1])
-    d_w_mean, d_w_std = np.mean(d_bboxes[..., 2]), np.std(d_bboxes[..., 2])
-    d_h_mean, d_h_std = np.mean(d_bboxes[..., 3]), np.std(d_bboxes[..., 3])
+        pred_bboxes = pred_bboxes[:, 0]
+        d_bboxes = np.abs(pred_bboxes - bboxes)
+        src_h, src_w = param.src_size
+        d_bboxes[..., 0] *= src_w
+        d_bboxes[..., 1] *= src_h
+        d_bboxes[..., 2] *= src_w
+        d_bboxes[..., 3] *= src_h
+        d_cx_mean, d_cx_std = np.mean(d_bboxes[..., 0]), np.std(d_bboxes[..., 0])
+        d_cy_mean, d_cy_std = np.mean(d_bboxes[..., 1]), np.std(d_bboxes[..., 1])
+        d_w_mean, d_w_std = np.mean(d_bboxes[..., 2]), np.std(d_bboxes[..., 2])
+        d_h_mean, d_h_std = np.mean(d_bboxes[..., 3]), np.std(d_bboxes[..., 3])
 
+        if not test_mode:
+            all_loss.append(loss)
+            all_accuracy.append(accuracy)
+            all_d_mean.append(np.array([d_cx_mean, d_cy_mean, d_w_mean, d_h_mean]))
+            all_d_std.append(np.array([d_cx_std, d_cy_std, d_w_std, d_h_std]))
 
-    all_loss.append(loss)
-    all_accuracy.append(accuracy)
-    all_d_mean.append(np.array([d_cx_mean, d_cy_mean, d_w_mean, d_h_mean]))
-    all_d_std.append(np.array([d_cx_std, d_cy_std, d_w_std, d_h_std]))
-
-    tf.logging.info('Avg. Retrieval Accuracy:\n {}'.format(accuracy))
-    tf.logging.info('For the best (@k=1), [mean, std]')
-    tf.logging.info('d_cx: {:.3f}, {:.3f}'.format(d_cx_mean, d_cx_std))
-    tf.logging.info('d_cy: {:.3f}, {:.3f}'.format(d_cy_mean, d_cy_std))
-    tf.logging.info('d_w : {:.3f}, {:.3f}'.format(d_w_mean, d_w_std))
-    tf.logging.info('d_h : {:.3f}, {:.3f}'.format(d_h_mean, d_h_std))
-    tf.logging.info('-' * 50)
+        tf.logging.info('Evalute on {:s} datasets:'.format(
+            'TRAIN' if test_mode else 'TEST'
+        ))
+        tf.logging.info('Avg. Retrieval Accuracy:\n {}'.format(accuracy))
+        tf.logging.info('For the best (@k=1), [mean, std]')
+        tf.logging.info('d_cx: {:.3f}, {:.3f}'.format(d_cx_mean, d_cx_std))
+        tf.logging.info('d_cy: {:.3f}, {:.3f}'.format(d_cy_mean, d_cy_std))
+        tf.logging.info('d_w : {:.3f}, {:.3f}'.format(d_w_mean, d_w_std))
+        tf.logging.info('d_h : {:.3f}, {:.3f}'.format(d_h_mean, d_h_std))
+        tf.logging.info('-' * 50)
 
     # save checkpoint
     if epoch % param.save_every == 0 or epoch+1 == param.n_epoch:
