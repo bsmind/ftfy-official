@@ -15,7 +15,7 @@ from test_triplet import TestData, calc_iou
 
 if __name__ == '__main__':
     base_dir = '/home/sungsooha/Desktop/Data/ftfy/sem/train'
-    result_dir = 'test_ftfy_85'
+    result_dir = 'test_ftfy_100'
     load_dir = 'test_triplet'
 
     batch_size = 512
