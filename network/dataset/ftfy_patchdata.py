@@ -38,7 +38,6 @@ def to_one_shot_labels(bboxes, imgsz=(256, 256), cellsz=(16,16)):
     out_shape = (n_bboxes, n_cells, 5)
     out = np.zeros((n_bboxes*n_cells, 5), dtype=np.float32)
 
-    # todo: with sources_shift dataset, the central position could be out of index...
     out[cell_pos, :] = norm_bboxes
     out = out.reshape(out_shape)
 
@@ -66,6 +65,18 @@ class FTFYPatchDataSampler(object):
         self.n_samples = 0
         self.cellsz = cellsz
 
+        self.train_bboxMap = dict()
+        self.train_srcMap = dict()
+        self.n_train_samples = 0
+
+        self.test_bboxMap = dict()
+        self.test_srcMap = dict()
+        self.n_test_samples = 0
+
+        self.mode = True  # true for training
+        self.n_samples = 0
+        self.sample_idx = 0
+        self.sample_order = []
 
     def _load_image_fnames(self, dir_name, ext='bmp'):
         files = []
@@ -109,8 +120,53 @@ class FTFYPatchDataSampler(object):
             patches_all = np.asarray(patches_all)
         return patches_all
 
+    def _load_info(self,
+                   bboxMap:dict, srcMap:dict,
+                   data_dir, info_dir, info_fname, tar_offset, src_offset):
+        fname = os.path.join(self.base_dir, data_dir, info_dir, info_fname)
+        assert os.path.exists(fname), "Cannot find information file: %s" % fname
+
+        N_BBOX_PARAMETERS = 4 # x0, y0, w, h
+        n_tar, n_src = 0, 0
+        with open(fname, 'r') as file:
+            for line in file:
+                tokens = line.split()
+
+                tar_id, min_src_id, max_src_id = int(tokens[0]), int(tokens[1]), int(tokens[2])
+                n_scales = max_src_id - min_src_id
+
+                # INFO: source coordinate in the original image: x0(3), y0(4), w(5), h(6)
+                # don't need them here
+                assert len(tokens) - 7 == n_scales * N_BBOX_PARAMETERS, \
+                    'Unmatched the number of bbox parameters: %s' % (len(tokens) - 7)
+                bboxes = np.array(tokens[7:]).astype(np.float32)
+                bboxes = bboxes.reshape((n_scales, N_BBOX_PARAMETERS))
+
+                # convert (x0, y0, w, h) to (cx, cy, w, h)
+                bboxes[..., 0] = bboxes[..., 0] + bboxes[..., 2]/2.
+                bboxes[..., 1] = bboxes[..., 1] + bboxes[..., 3]/2.
+
+                g_tar_id = tar_id + tar_offset
+                g_min_src_id = min_src_id + src_offset
+                g_max_src_id = max_src_id + src_offset
+
+                assert bboxMap.get(g_tar_id, None) is None, \
+                    'Duplicated target id in bboxMap: %s' % g_tar_id
+                assert srcMap.get(g_tar_id, None) is None, \
+                    'Duplicated target id in srcMap: %s' % g_tar_id
+
+                bboxMap[g_tar_id] = bboxes
+                srcMap[g_tar_id] = [g_min_src_id, g_max_src_id]
+
+                n_tar = max(n_tar, tar_id)
+                n_src = max(n_src, max_src_id)
+
+        # Note that when the information is splited into training and test sets, it requires to
+        # fetch both information files to compute true number of targets and sources.
+        return n_tar+1, n_src
+
     def load_dataset(
-            self, data_dirs, src_dir, tar_dir='patches',
+            self, data_dirs:list, src_dir='sources', tar_dir='patches',
             src_ext='bmp', src_size=(256, 256), n_src_channels=1, src_per_col=10, src_per_row=10,
             tar_ext='bmp', tar_size=(128, 128), n_tar_channels=1, tar_per_col=10, tar_per_row=10,
             debug=True
@@ -119,71 +175,69 @@ class FTFYPatchDataSampler(object):
 
         tar_offset = 0
         src_offset = 0
-
-        datamap, bboxes = [], []
+        train_bboxMap, train_srcMap = dict(), dict()
+        test_bboxMap, test_srcMap = dict(), dict()
         tar_patches, src_patches = [], []
+
         for data_dir in data_dirs:
-            info_path = os.path.join(self.base_dir, data_dir, src_dir, 'info.txt')
-            with open(info_path, 'r') as file:
-                n_targets = 0
-                n_sources = -1
-                for line in file:
-                    tar_id, min_src_id, max_src_id, x0, y0, w, h = line.split()
+            n_train_tar, n_train_src = self._load_info(
+                train_bboxMap, train_srcMap,
+                data_dir, src_dir, 'train_info.txt', tar_offset, src_offset)
+            n_test_tar, n_test_src = self._load_info(
+                test_bboxMap, test_srcMap,
+                data_dir, src_dir, 'test_info.txt', tar_offset, src_offset)
 
-                    tar_id = int(tar_id)
-                    min_src_id, max_src_id = int(min_src_id), int(max_src_id)
-                    x0, y0, w, h = float(x0), float(y0), float(w), float(h)
-                    cx, cy = x0 + w/2., y0 + h/2.
+            n_src = max(n_train_src, n_test_src)
+            n_tar = max(n_train_tar, n_test_tar)
+            tar_offset += n_tar
+            src_offset += n_src
 
-                    datamap.append([
-                        tar_id + tar_offset,
-                        min_src_id + src_offset, max_src_id + src_offset
-                    ])
-                    bboxes.append([cx, cy, w, h])
-                    n_targets += 1
-                    n_sources = max(n_sources, max_src_id)
+            # load target patches
+            dir_name = os.path.join(data_dir, tar_dir)
+            fnames = self._load_image_fnames(dir_name, tar_ext)
+            tar_patches.append(
+                self._load_patches(dir_name, fnames, tar_size, n_tar_channels,
+                                   tar_per_row, tar_per_col, n_tar)
+            )
 
-                # todo: load target and source images
-                dir_name = os.path.join(data_dir, tar_dir)
-                fnames = self._load_image_fnames(dir_name, tar_ext)
-                tar_patches.append(
-                    self._load_patches(dir_name, fnames, tar_size, n_tar_channels,
-                                       tar_per_row, tar_per_col, n_targets)
-                )
+            # load source patches
+            dir_name = os.path.join(data_dir, src_dir)
+            fnames = self._load_image_fnames(dir_name, src_ext)
+            src_patches.append(
+                self._load_patches(dir_name, fnames, src_size, n_src_channels,
+                                   src_per_row, src_per_col, n_src)
+            )
 
-                dir_name = os.path.join(data_dir, src_dir)
-                fnames = self._load_image_fnames(dir_name, src_ext)
-                src_patches.append(
-                    self._load_patches(dir_name, fnames, src_size, n_src_channels,
-                                       src_per_row, src_per_col, n_sources)
-                )
-
-                tar_offset += n_targets
-                src_offset += n_sources
-
-        datamap = np.asarray(datamap, dtype=np.int32)
-        bboxes = np.asarray(bboxes, dtype=np.float32)
         tar_patches = np.concatenate(tar_patches, axis=0)
         src_patches = np.concatenate(src_patches, axis=0)
 
-        self.n_samples = len(datamap)
-        self.sample_idx = 0
-        ind = np.arange(self.n_samples)
-        np.random.shuffle(ind)
-        datamap = datamap[ind]
-        bboxes = bboxes[ind]
+        self.train_bboxMap = train_bboxMap
+        self.train_srcMap  = train_srcMap
+        self.n_train_samples = len(train_bboxMap)
 
-        self.data['datamap'] = datamap
-        self.data['bboxes'] = bboxes
+        self.test_bboxMap  = test_bboxMap
+        self.test_srcMap   = test_srcMap
+        self.n_test_samples = len(test_bboxMap)
+
+        self.mode = True # true for training
+        self.n_samples = self.n_train_samples
+        self.sample_idx = 0
+
+        ind = np.array(list(self.train_srcMap.keys()), dtype=np.int32)
+        np.random.shuffle(ind)
+        self.sample_order = ind
+
+        self.data['bboxMap'] = self.train_bboxMap
+        self.data['srcMap'] = self.train_srcMap
         self.data['targets'] = tar_patches
         self.data['sources'] = src_patches
 
         if debug:
             output = tf.logging.info
-            output('datamap : {}'.format(datamap.shape))
-            output('bboxes  : {}'.format(bboxes.shape))
-            output('targets : {}'.format(tar_patches.shape))
-            output('sources : {}'.format(src_patches.shape))
+            output('# Training samples: %s' % self.n_train_samples)
+            output('# Test     samples: %s' % self.n_test_samples)
+            output('# target patches  : %s' % len(tar_patches))
+            output('# source patches  : %s' % len(src_patches))
 
     def generate_stats(self):
         mean = np.mean(self.data['targets'])
@@ -199,36 +253,39 @@ class FTFYPatchDataSampler(object):
             
     def reset(self):
         self.sample_idx = 0
-        ind = np.arange(self.n_samples)
-        np.random.shuffle(ind)
-        self.data['datamap'] = self.data['datamap'][ind]
-        self.data['bboxes'] = self.data['bboxes'][ind]
+        np.random.shuffle(self.sample_order)
 
-    def reset(self):
-        self.sample_idx = 0
-        ind = np.arange(self.n_samples)
-        np.random.shuffle(ind)
-        self.data['datamap'] = self.data['datamap'][ind]
-        self.data['bboxes'] = self.data['bboxes'][ind]
+    def set_mode(self, mode:bool):
+        if mode:
+            self.n_samples = self.n_train_samples
+            self.data['bboxMap'] = self.train_bboxMap
+            self.data['srcMap'] = self.train_srcMap
+        else:
+            self.n_samples = self.n_test_samples
+            self.data['bboxMap'] = self.test_bboxMap
+            self.data['srcMap'] = self.test_srcMap
+
+        self.mode = mode
+        self.sample_order = np.array(list(self.data['srcMap'].keys()), dtype=np.int32)
+        self.reset()
 
     def __iter__(self):
         return self
 
     def __next__(self):
         if self.n_samples == 0 or self.sample_idx >= self.n_samples:
-            self.sample_idx = 0
-            ind = np.arange(self.n_samples)
-            np.random.shuffle(ind)
-            self.data['datamap'] = self.data['datamap'][ind]
-            self.data['bboxes'] = self.data['bboxes'][ind]
+            self.reset()
             raise StopIteration
 
-        tar_id, min_src_id, max_src_id = self.data['datamap'][self.sample_idx]
-        src_id = np.random.randint(min_src_id, max_src_id, dtype=np.int32)
-        bbox = self.data['bboxes'][self.sample_idx]
+        tar_id = self.sample_order[self.sample_idx]
 
-        tar = self.data['targets'][tar_id]
-        src = self.data['sources'][src_id]
+        min_src_id, max_src_id = self.data['srcMap'][tar_id]
+        src_id = np.random.randint(min_src_id, max_src_id, dtype=np.int32)
+
+        bbox = self.data['bboxMap'][tar_id][int(src_id - min_src_id)]
+        tar  = self.data['targets'][tar_id]
+        src  = self.data['sources'][src_id]
+
         labels, norm_bbox = to_one_shot_labels(bbox, src.shape[:2], self.cellsz)
         labels = labels[0]
         norm_bbox = norm_bbox[0]
@@ -264,10 +321,12 @@ if __name__ == '__main__':
     from matplotlib.patches import Rectangle
     from network.loss.ftfy import loss
 
-    is_sem = False
+    tf.logging.set_verbosity(tf.logging.INFO)
+
+    is_sem = True
     if is_sem:
         base_dir = '/home/sungsooha/Desktop/Data/ftfy/sem/train'
-        project_dir = 'sources' # ['sources', 'sources_square', 'sources_shift']
+        project_dir = 'sources'
         tar_dir = 'patches'
     else:
         base_dir = '/home/sungsooha/Desktop/Data/ftfy/austin'
@@ -325,43 +384,42 @@ if __name__ == '__main__':
     i_test = 0
 
     with tf.Session() as sess:
-        sess.run(dataset_init)
-        try:
-            while i_test < max_tests:
-                sources, targets, labels, bboxes = sess.run(
-                    [*batch_data],
-                    feed_dict={
-                        logits: np.zeros((batch_size, 16, 16, 10), dtype=np.float32)
-                    }
-                )
-                i_test+=1
+        for ii in range(2):
+            data_sampler.set_mode(ii==0)
+            i_test = 0
+            print('Run on {:s} mode'.format('TRAIN' if data_sampler.mode else 'TEST'))
+            sess.run(dataset_init)
+            try:
+                while i_test < max_tests:
+                    sources, targets, labels, bboxes = sess.run(
+                        [*batch_data],
+                        feed_dict={
+                            logits: np.zeros((batch_size, 16, 16, 10), dtype=np.float32)
+                        }
+                    )
+                    i_test+=1
 
-                for idx in range(len(sources)):
-                    src = sources[idx]
-                    tar = targets[idx]
-                    label = labels[idx]
-                    bbox = bboxes[idx]
+                    for idx in range(len(sources)):
+                        src = sources[idx]
+                        tar = targets[idx]
+                        label = labels[idx]
+                        bbox = bboxes[idx]
 
-                    h_src[idx].set_data(np.squeeze(src))
-                    h_tar[idx].set_data(np.squeeze(tar))
+                        h_src[idx].set_data(np.squeeze(src))
+                        h_tar[idx].set_data(np.squeeze(tar))
 
-                    #print(bbox)
-                    _, cx, cy, w, h = bbox * 256
-                    rect[idx].set_xy((cx - 0.5 - w/2, cy - 0.5 - h/2))
-                    rect[idx].set_width(w)
-                    rect[idx].set_height(h)
+                        #print(bbox)
+                        _, cx, cy, w, h = bbox * 256
+                        rect[idx].set_xy((cx - 0.5 - w/2, cy - 0.5 - h/2))
+                        rect[idx].set_width(w)
+                        rect[idx].set_height(h)
 
-                    _bbox = to_bboxes(label)
-                    print('bbox: ', [cx - 0.5, cy - 0.5, w, h])
-                    print('from label: ', _bbox)
-
-
-
-                plt.pause(20)
-
-
-        except tf.errors.OutOfRangeError:
-            pass
+                        _bbox = to_bboxes(label)
+                        print('bbox: ', [cx - 0.5, cy - 0.5, w, h])
+                        print('from label: ', _bbox)
+                    plt.pause(5)
+            except tf.errors.OutOfRangeError:
+                pass
 
 
 
