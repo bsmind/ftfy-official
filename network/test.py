@@ -1,6 +1,7 @@
 import tensorflow as tf
 import numpy as np
 from network.model_fn import triplet_model_fn
+from network.model_fn import ftfy_model_fn
 
 tf.logging.set_verbosity(tf.logging.INFO)
 
@@ -135,4 +136,106 @@ class TripletNet(object):
 
         raw_inputs = np.concatenate(raw_inputs, axis=0)
         return raw_inputs
+
+class FTFYNet(object):
+    def __init__(self, model_path, epoch=None, **model_kwargs):
+        self.mean = model_kwargs.pop('mean', 0)
+        self.std  = model_kwargs.pop('std', 1)
+        self.n_channels = model_kwargs.pop('n_channels', 1)
+        self.src_size = model_kwargs.pop('src_size', (256, 256))
+        self.src_cell_size = model_kwargs.pop('src_cell_size', (16, 16))
+
+        input_shape = (None, None, None, self.n_channels)
+        self.src = tf.placeholder(tf.float32, input_shape, 'ph_a')
+        self.tar = tf.placeholder(tf.float32, input_shape, 'ph_p')
+
+        self.is_normalized = True
+        self.norm_src = tf_normalize(self.src, self.src_size, mean=self.mean, std=self.std)
+        self.norm_tar = tf_normalize(self.tar, (128, 128), mean=self.mean, std=self.std)
+
+        # todo: parsing model arguments to properly build network graph
+        # todo: currently, using the default setting
+        self.spec = ftfy_model_fn(
+            sources=self.norm_src, targets=self.norm_tar,
+            src_cell_size=self.src_cell_size, mode='TEST'
+        )
+
+        config = tf.ConfigProto(
+            allow_soft_placement=True,
+            log_device_placement=False,
+            intra_op_parallelism_threads=8,
+            inter_op_parallelism_threads=0
+        )
+        config.gpu_options.allow_growth = True
+        self.sess = tf.Session(config=config)
+
+        # initialize
+        self.sess.run(tf.global_variables_initializer())
+        self.sess.run(tf.local_variables_initializer())
+
+        self.saver = tf.train.Saver()
+        ckpt = tf.train.get_checkpoint_state(model_path)
+        if ckpt is None:
+            raise ValueError('Cannot find a checkpoint: %s' % model_path)
+        model_checkpoint_path = ckpt.model_checkpoint_path
+        if epoch is not None:
+            all_model_checkpoint_paths = ckpt.all_model_checkpoint_paths
+            if epoch < len(all_model_checkpoint_paths):
+                model_checkpoint_path = all_model_checkpoint_paths[epoch]
+        self.saver.restore(self.sess, model_checkpoint_path)
+
+
+    def run(self, src, tar, top_k=0):
+
+        feed_dict = dict(self.spec.test_feed_dict)
+        feed_dict[self.src] = src
+        feed_dict[self.tar] = tar
+
+        confidence, bboxes = self.sess.run(
+            [self.spec.pred_confidence, self.spec.pred_bboxes], feed_dict)
+
+        batch_size = confidence.shape[0]
+        batch_ind = np.argsort(confidence)
+        for i in range(batch_size):
+            ind = batch_ind[i]
+            ind = ind[::-1]
+            confidence[i] = confidence[i, ind]
+            bboxes[i] = bboxes[i, ind]
+
+        if top_k > 0:
+            confidence = confidence[:, :top_k]
+            bboxes = bboxes[:, :top_k]
+
+        return confidence, bboxes
+
+
+    def get_input(self, images, is_src:bool, batch_size=48):
+        input_shape = images.shape
+        assert len(input_shape) == 4, 'Required to have 4-dimension input.'
+        assert input_shape[3] == self.n_channels, 'Unmatched number of channels, must %d' % self.n_channels
+
+        raw_inputs = []
+
+        n_images = input_shape[0]
+        batch_iters = (n_images + batch_size) // batch_size
+        for i_batch in range(batch_iters):
+            start = i_batch*batch_size
+            end = min(n_images, (i_batch+1)*batch_size)
+
+            feed_dict = dict(self.spec.test_feed_dict)
+            if is_src:
+                feed_dict[self.src] = images[start: end]
+                raw_input = self.sess.run(self.norm_src, feed_dict=feed_dict)
+            else:
+                feed_dict[self.tar] = images[start: end]
+                raw_input = self.sess.run(self.norm_tar, feed_dict=feed_dict)
+
+            raw_inputs.append(raw_input)
+
+            if end == n_images:
+                break
+
+        raw_inputs = np.concatenate(raw_inputs, axis=0)
+        return raw_inputs
+
 

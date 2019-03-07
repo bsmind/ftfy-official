@@ -63,31 +63,37 @@ def calc_iou(bbox1, bbox2):
     return iou
 
 class TestData(object):
-    def __init__(self, base_dir:str, data_dir:str, output_dir:str=None, force_to_new:bool=False):
+    def __init__(self, base_dir:str, data_dir:str,
+                 load_dir:str=None,
+                 force_to_new:bool=False):
         loaded = False
         self.fileMap = None
         self.info = None
         self.fnames = None
 
-        if output_dir is not None:
-            has_filemap = os.path.exists(os.path.join(output_dir, 'filemap.txt'))
-            has_info = os.path.exists(os.path.join(output_dir, 'info.txt'))
+        if load_dir is not None:
+            has_filemap = os.path.exists(os.path.join(load_dir, 'filemap.txt'))
+            has_info = os.path.exists(os.path.join(load_dir, 'info.txt'))
             if has_filemap and has_info:
-                self.load(output_dir)
+                self.load(load_dir)
                 loaded = True
+                #print('loaded from %s' % load_dir)
 
         if not loaded or force_to_new:
             self.fileMap, self.info = load_patch_info(base_dir, data_dir)
             self.fnames = list(self.fileMap.keys())
+            #print('New dataset is created.')
 
     def load(self, output_dir:str):
         self.fileMap = dict()
+        n_examples = 0
         file = open(os.path.join(output_dir, 'filemap.txt'), 'r')
         for line in file:
             tokens = line.split()
             key = tokens[0]
             value = np.array(tokens[1:]).astype(np.int32)
             self.fileMap[key] = value.tolist()
+            n_examples += len(self.fileMap.get(key, []))
         file.close()
 
         self.info = []
@@ -99,7 +105,7 @@ class TestData(object):
         file.close()
 
         self.fnames = list(self.fileMap.keys())
-        assert len(self.fnames) == len(self.info), \
+        assert n_examples == len(self.info), \
             'Mismatched number of items in filemap.txt and info.txt'
 
 
@@ -121,7 +127,7 @@ class TestData(object):
 
 if __name__ == '__main__':
     base_dir = '/home/sungsooha/Desktop/Data/ftfy/sem/train'
-    result_dir = 'test_triplet'
+    result_dir = 'test_triplet' # ['test_triplet', 'test_ftfy']
 
     batch_size = 512 # batch size for db construction
     top_K      = 5
@@ -193,8 +199,8 @@ if __name__ == '__main__':
     n_total_test = 0
     n_success_k  = 0
     n_success_1  = 0
-    results_by_factor = dict()
-    for data_dir in tqdm(data_dirs, desc='TEST TRIPLET:'):
+
+    for data_dir in tqdm(data_dirs, desc='TEST TRIPLET'):
         output_dir = os.path.join(base_dir, data_dir, result_dir)
         if not os.path.exists(output_dir):
             os.makedirs(output_dir)
@@ -343,6 +349,7 @@ if __name__ == '__main__':
                 topk_1_rect.set_xy((idx*PATCH_SIZE, 0))
 
                 plt.pause(0.0001)
+                plt.draw()
                 fig_output_dir = fig_output_dir_s if is_success else fig_output_dir_f
                 bbox_fig.savefig(os.path.join(fig_output_dir, 'bbox_{:03d}_{:03d}_{:d}.png'.format(
                     fid, q_idx, int(is_success)

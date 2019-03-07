@@ -38,7 +38,6 @@ def to_one_shot_labels(bboxes, imgsz=(256, 256), cellsz=(16,16)):
     out_shape = (n_bboxes, n_cells, 5)
     out = np.zeros((n_bboxes*n_cells, 5), dtype=np.float32)
 
-    # todo: with sources_shift dataset, the central position could be out of index...
     out[cell_pos, :] = norm_bboxes
     out = out.reshape(out_shape)
 
