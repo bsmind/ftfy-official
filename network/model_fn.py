@@ -66,7 +66,7 @@ def get_optimizer(optimizer_name, **kwargs):
 
 def triplet_model_fn(
         anchors, positives, negatives, n_feats=128,
-        mode='TRAIN', cnn_name='spread', loss_name='triplet', optimizer_name='Adam',
+        mode='TRAIN', cnn_name='ftfy', loss_name='spread', optimizer_name='Momentum',
         margin=None, # todo: replace with loss_kwargs
         use_regularization_loss = False,
         learning_rate = 0.0001, # todo: replace with opt_kwargs

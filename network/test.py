@@ -77,7 +77,7 @@ class TripletNet(object):
         model_checkpoint_path = ckpt.model_checkpoint_path
         if epoch is not None:
             all_model_checkpoint_paths = ckpt.all_model_checkpoint_paths
-            if 0 <= epoch and epoch < len(all_model_checkpoint_paths):
+            if epoch < len(all_model_checkpoint_paths):
                 model_checkpoint_path = all_model_checkpoint_paths[epoch]
         self.saver.restore(self.sess, model_checkpoint_path)
 
@@ -136,6 +136,35 @@ class TripletNet(object):
 
         raw_inputs = np.concatenate(raw_inputs, axis=0)
         return raw_inputs
+
+    def get_all_features(self, images):
+        layers = ['conv-{:02d}'.format(i+1) for i in range(11)]
+        layers.append('merged')
+        layers.append('conv-12')
+        layers.append('conv-13')
+        layers.append('fc')
+
+        # normalize
+        if not self.is_normalized:
+            images = self.normalize(images)
+
+        ops = self.spec.net.layers[0]
+        outputs = []
+        for i in range(len(images)):
+            feed_dict = dict(self.spec.test_feed_dict)
+
+            im = images[i]
+            im = np.expand_dims(im, axis=0)
+
+            feed_dict[self.anchors] = im
+            output = self.sess.run(ops, feed_dict=feed_dict)
+
+            output_dict = dict()
+            for name, o in zip(layers, output):
+                output_dict[name] = o
+            outputs.append(output_dict)
+        return outputs
+
 
 class FTFYNet(object):
     def __init__(self, model_path, epoch=None, **model_kwargs):
