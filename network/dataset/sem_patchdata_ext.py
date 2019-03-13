@@ -59,12 +59,13 @@ class IoUPatchDataSamplerExt(IoUPatchDataSampler):
     def load_dataset(
             self, dir_name,
             ext='bmp', patch_size=(128, 128), n_channels=1,
+            patch_dir='patches',
             debug=True
     ):
         assert isinstance(dir_name, list), 'It expects to get list of directory names'
 
         def get_n_patches(d):
-            file = open(os.path.join(self.base_dir, d, 'patches', 'info.txt'), 'r')
+            file = open(os.path.join(self.base_dir, d, patch_dir, 'info.txt'), 'r')
             count = 0
             for _ in file: count += 1
             return count
@@ -73,7 +74,7 @@ class IoUPatchDataSamplerExt(IoUPatchDataSampler):
         total_n_patches = 0
         for d in dir_name:
             n_patches = get_n_patches(d)
-            fnames = self._load_image_fnames(os.path.join(d, 'patches'), ext)
+            fnames = self._load_image_fnames(os.path.join(d, patch_dir), ext)
             patches.append(self._load_patches(
                 os.path.join(d, 'patches'),
                 fnames, patch_size, n_channels, n_patches
