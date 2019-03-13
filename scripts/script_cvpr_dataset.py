@@ -1,3 +1,12 @@
+"""
+Generate training examples
+
+Authors:
+    Sungsoo Ha (sungsooha@bnl.gov)
+
+Last Modified:
+    March 12, 2019
+"""
 import os
 import numpy as np
 
@@ -187,8 +196,6 @@ def generate_for_ftfy(base_dir, train_ratio=.7):
             n_blocks=3, src_size=256, is_sem=True
         )
 
-
-
 def generate_for_triplet(base_dir, train_ratio=.7,
                          do_triplet=False, do_matched=False, do_retrieval=True):
     n_triplet_samples = 1000000
@@ -283,15 +290,15 @@ def generate_for_triplet(base_dir, train_ratio=.7,
 
 if __name__ == '__main__':
     np.random.seed(2019)
-
-    base_dir = '/home/sungsooha/Desktop/Data/ftfy/sem/train'
     do_triplet = False
     do_matched = False
     do_retrieval = False
 
-    # generate_for_triplet(base_dir, train_ratio=.7,
-    #                      do_triplet=do_triplet,
-    #                      do_matched=do_matched,
-    #                      do_retrieval=do_retrieval)
+    base_dir = '/home/sungsooha/Desktop/Data/ftfy/sem/train'
 
-    generate_for_ftfy(base_dir, train_ratio=.7)
+    generate_for_triplet(base_dir, train_ratio=.7,
+                         do_triplet=do_triplet,
+                         do_matched=do_matched,
+                         do_retrieval=do_retrieval)
+
+    # generate_for_ftfy(base_dir, train_ratio=.7)

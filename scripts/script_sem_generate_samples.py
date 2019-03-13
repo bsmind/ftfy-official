@@ -296,6 +296,8 @@ def generate_image_retrieval_samples(
                 label_d = '{:s}_{:d}_{:d}_dummy'.format(key, gid, iou)
                 update_file(idx_d, label_d, 0)
 
+        file.close()
+
 if __name__ == '__main__':
     base_dir = '/home/sungsooha/Desktop/Data/ftfy/sem/train'
     n_triplet_samples = 1000000

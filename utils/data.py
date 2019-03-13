@@ -221,19 +221,22 @@ def load_info_for_triplet(base_dir, data_dir, fname='info.txt'):
 
     return gIDs, datamap
 
-def generate_triplet_samples(base_dir, data_dir, n_samples, debug=True):
+def generate_triplet_samples(
+        output_dir,
+        data_info,
+        n_samples,
+        gid_include,
+        fname_prefix='triplet'
+):
+    gIDs, datamap, pid_to_fid = data_info
+
     # IoU set
     # set A(0): extracted from key points
     # set B(1): 0.7 <= IoU < 1.0 w.r.t A
     # set C(2): 0.5 <= IoU < 0.7 w.r.t A
     # set D(3): 0.3 <= IoU < 0.5 w.r.t A
-    gIDs, datamap = load_info_for_triplet(base_dir, data_dir)
-    if debug:
-        print('-- data name   : %s' % data_dir)
-        print('-- # groups    : %s' % len(gIDs))
-        print('-- # patch sets: %s' % len(datamap))
 
-    fname = os.path.join(base_dir, data_dir, 'triplet_{:d}.txt'.format(n_samples))
+    fname = os.path.join(output_dir, '{:s}.txt'.format(fname_prefix))
     file = open(fname, 'w')
 
     def update_file(idx_a, idx_p, idx_n):
@@ -242,59 +245,86 @@ def generate_triplet_samples(base_dir, data_dir, n_samples, debug=True):
     def get_key(gid, iou_id):
         return '{:d}_{:d}'.format(gid, iou_id)
 
+    m1, m2 = 0, 0
+
     for _ in tqdm(range(n_samples), desc='Generating triplet samples'):
-        gid = np.random.choice(gIDs)
-        idx_a = np.random.choice(datamap[get_key(gid, 0)])
-
-        # method I: within a patch group
-        # - anchor /in {A}
-        # - positive /in {A, B, C} except the anchor
-        # - negative /in {B, C, D} except the set where the positive is originated
-        if np.random.random() < 0.5:
-            used_patches = [idx_a]
-            p_iou = 0
-            idx_p = idx_a
-            while idx_p in used_patches:
-                p_iou = np.random.choice([0, 1, 2])
-                idx_p = np.random.choice(datamap[get_key(gid, p_iou)])
-
-            used_patches.append(idx_p)
-            idx_n = idx_p
-            while idx_n in used_patches:
-                n_iou = np.random.choice(np.arange(p_iou+1, 4, 1, dtype=np.int32))
-                idx_n = np.random.choice(datamap[get_key(gid, n_iou)])
-
-        # method II: over patch groups
-        # - anchor /in {A}
-        # - positive /in {A, B} except the anchor
-        # - negative /in {A', B'} of other key points
-        else:
-            idx_p = idx_a
-            while idx_p == idx_a:
-                p_iou = np.random.choice([0, 1])
-                idx_p = np.random.choice(datamap[get_key(gid, p_iou)])
-
+        is_valid = False
+        while not is_valid:
+            gid = np.random.choice(gIDs)
             gid_n = gid
-            while gid_n == gid:
-                gid_n = np.random.choice(gIDs)
-            n_iou = np.random.choice([0, 1])
-            idx_n = np.random.choice(datamap[get_key(gid_n, n_iou)])
+            idx_a = np.random.choice(datamap[get_key(gid, 0)])
+            idx_p = idx_a
+            idx_n = idx_a
 
-        update_file(idx_a, idx_p, idx_n)
+            method_id = -1
 
-def generate_matched_pairs(base_dir, data_dir, n_samples, debug=True):
+            # method I: within a patch group
+            # - anchor /in {A}
+            # - positive /in {A, B, C} except the anchor
+            # - negative /in {B, C, D} except the set where the positive is originated
+            if np.random.random() < 0.5:
+                used_patches = [idx_a]
+                p_iou = 0
+                idx_p = idx_a
+                while idx_p in used_patches:
+                    p_iou = np.random.choice([0, 1, 2])
+                    idx_p = np.random.choice(datamap[get_key(gid, p_iou)])
+
+                used_patches.append(idx_p)
+                idx_n = idx_p
+                while idx_n in used_patches:
+                    n_iou = np.random.choice(np.arange(p_iou+1, 4, 1, dtype=np.int32))
+                    idx_n = np.random.choice(datamap[get_key(gid_n, n_iou)])
+
+                method_id = 1
+                m1 += 1
+
+            # method II: over patch groups
+            # - anchor /in {A}
+            # - positive /in {A, B} except the anchor
+            # - negative /in {A', B'} of other key points
+            else:
+                idx_p = idx_a
+                while idx_p == idx_a:
+                    p_iou = np.random.choice([0, 1])
+                    idx_p = np.random.choice(datamap[get_key(gid, p_iou)])
+
+                while gid_n == gid:
+                    gid_n = np.random.choice(gIDs)
+                n_iou = np.random.choice([0, 1])
+                idx_n = np.random.choice(datamap[get_key(gid_n, n_iou)])
+
+                method_id = 2
+                m2 += 1
+
+            if gid in gid_include and gid_n in gid_include:
+                update_file(idx_a, idx_p, idx_n)
+                is_valid = True
+            else:
+                if method_id == 1: m1 -= 1
+                if method_id == 2: m2 -= 1
+
+    print("Method 1: %s", m1)
+    print("Method 2: %s", m2)
+
+    file.close()
+
+def generate_matched_pairs(
+        output_dir,
+        data_info,
+        n_samples,
+        gid_include,
+        fname_prefix='matched'
+):
+    gIDs, datamap, pid_to_fid = data_info
+
     # IoU set
     # set A(0): extracted from key points
     # set B(1): 0.7 <= IoU < 1.0 w.r.t A
     # set C(2): 0.5 <= IoU < 0.7 w.r.t A
     # set D(3): 0.3 <= IoU < 0.5 w.r.t A
-    gIDs, datamap = load_info_for_triplet(base_dir, data_dir)
-    if debug:
-        print('-- data name   : %s' % data_dir)
-        print('-- # groups    : %s' % len(gIDs))
-        print('-- # patch sets: %s' % len(datamap))
 
-    fname = os.path.join(base_dir, data_dir, 'matched_{:d}.txt'.format(n_samples))
+    fname = os.path.join(output_dir, '{:s}.txt'.format(fname_prefix))
     file = open(fname, 'w')
 
     def update_file(idx_1, idx_2, is_matched):
@@ -306,6 +336,8 @@ def generate_matched_pairs(base_dir, data_dir, n_samples, debug=True):
     for _ in tqdm(range(n_samples), desc='Generating matched pairs'):
         # matched if two patches from either A or B in the same group
         gid = np.random.choice(gIDs)
+        while gid not in gid_include:
+            gid = np.random.choice(gIDs)
         idx_1 = np.random.choice(datamap[get_key(gid, 0)])
         idx_2 = idx_1
         while idx_1 == idx_2:
@@ -314,29 +346,34 @@ def generate_matched_pairs(base_dir, data_dir, n_samples, debug=True):
         update_file(idx_1, idx_2, 1)
 
         # unmatched if two patches from different groups
-        gid_1 = np.random.choice(gIDs)
-        gid_2 = gid_1
-        while gid_1 == gid_2:
-            gid_2 = np.random.choice(gIDs)
+        gid_1, gid_2 = np.random.choice(gIDs, 2, replace=False)
+        while gid_1 not in gid_include or gid_2 not in gid_include or gid_1 == gid_2:
+            gid_1, gid_2 = np.random.choice(gIDs, 2, replace=False)
+
         iou_1 = np.random.choice([0, 1])
         iou_2 = np.random.choice([0, 1])
         idx_1 = np.random.choice(datamap[get_key(gid_1, iou_1)])
         idx_2 = np.random.choice(datamap[get_key(gid_2, iou_2)])
         update_file(idx_1, idx_2, 0)
 
-def generate_image_retrieval_samples(base_dir, data_dir, n_query_per_group=1, debug=True):
+    file.close()
+
+def generate_image_retrieval_samples(
+        output_dir,
+        data_info,
+        gid_include,
+        n_query_per_group=1,
+        fname_prefix='retrieval'
+):
+    gIDs, datamap, pid_to_fid = data_info
+
     # IoU set
     # set A(0): extracted from key points
     # set B(1): 0.7 <= IoU < 1.0 w.r.t A
     # set C(2): 0.5 <= IoU < 0.7 w.r.t A
     # set D(3): 0.3 <= IoU < 0.5 w.r.t A
-    gIDs, datamap = load_info_for_triplet(base_dir, data_dir)
-    if debug:
-        print('-- data name   : %s' % data_dir)
-        print('-- # groups    : %s' % len(gIDs))
-        print('-- # patch sets: %s' % len(datamap))
 
-    fname = os.path.join(base_dir, data_dir, 'retrieval.txt')
+    fname = os.path.join(output_dir, '{:s}.txt'.format(fname_prefix))
     file = open(fname, 'w')
 
     def update_file(idx, label, is_query):
@@ -346,6 +383,9 @@ def generate_image_retrieval_samples(base_dir, data_dir, n_query_per_group=1, de
         return '{:d}_{:d}'.format(gid, iou_id)
 
     for gid in tqdm(gIDs, desc='Generating retrieval test set'):
+        if gid not in gid_include:
+            continue
+
         used_pid = []
         label_q = '{:d}'.format(gid)
         for _ in range(n_query_per_group):
@@ -373,3 +413,5 @@ def generate_image_retrieval_samples(base_dir, data_dir, n_query_per_group=1, de
             used_pid.append(idx_d)
             label_d = '{:d}_{:d}_dummy'.format(gid, iou)
             update_file(idx_d, label_d, 0)
+
+    file.close()
