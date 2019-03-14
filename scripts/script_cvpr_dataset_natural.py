@@ -19,6 +19,9 @@ from utils.data import generate_triplet_samples
 from utils.data import generate_matched_pairs
 from utils.data import generate_image_retrieval_samples
 
+# for ftfy
+from scripts.script_ftfy_src_collection import load_info as ftfy_load_info
+from scripts.script_cvpr_dataset import generate_source_images
 
 def get_key(gid, iouid):
     return '{:d}_{:d}'.format(gid, iouid)
@@ -57,6 +60,37 @@ def load_info(base_dir, data_dir, fname='info.txt'):
             n_patches += 1
 
     return (gIDs, datamap, pid_to_fid), n_patches, len(gIDs), len(uImages)
+
+
+def generate_for_ftfy(base_dir, data_dir):
+    # data split should be done with triplet data generation
+    train_groups = np.load(os.path.join(base_dir, 'train_groups_' + data_dir + '.npy'))
+    test_groups = np.load(os.path.join(base_dir, 'test_groups_' + data_dir + '.npy'))
+
+    # ------------------------------------------------------------------------
+    # Load information
+    # ------------------------------------------------------------------------
+    data_info, n_images, n_groups, n_patches = ftfy_load_info(
+        base_dir, data_dir, base_dir_file=os.path.join(base_dir, data_dir.split('_')[0]))
+    print("image set            : %s" % data_dir)
+    print("# images             : %s" % n_images)
+    print("# patch groups       : %s" % n_groups)
+    print("# patches            : %s" % n_patches)
+    print("# train patch groups : %s" % len(train_groups))
+    print("# test patch groups  : %s" % len(test_groups))
+
+    # ------------------------------------------------------------------------
+    # Process over each data_dir
+    # ------------------------------------------------------------------------
+    fname_to_gid, gid_info, pid_info = data_info
+    generate_source_images(
+        output_dir=os.path.join(base_dir, data_dir.split('_')[0] + '_sources'),
+        fname_to_gid=fname_to_gid,
+        gid_info=gid_info,
+        pid_info=pid_info,
+        train_gids=train_groups, test_gids=test_groups, gid_offset=0,
+        n_blocks=3, src_size=256, is_sem=False
+    )
 
 def generate_for_triplet(base_dir, data_dir, train_ratio=.7,
                          do_triplet=True, do_matched=True, do_retrieval=True):
@@ -125,12 +159,12 @@ def generate_for_triplet(base_dir, data_dir, train_ratio=.7,
 
 if __name__ == '__main__':
     np.random.seed(2019)
-    do_triplet = False
-    do_matched = False
+    do_triplet = True
+    do_matched = True
     do_retrieval = True
 
     base_dir = '/home/sungsooha/Desktop/Data/ftfy/austin'
-    data_dir = 'campus_patch'
+    data_dir = 'human_patch'
 
     generate_for_triplet(
         base_dir=base_dir,
@@ -139,3 +173,5 @@ if __name__ == '__main__':
         do_triplet=do_triplet,
         do_matched=do_matched
     )
+
+    generate_for_ftfy(base_dir, data_dir)

@@ -18,7 +18,7 @@ np.random.seed(2019)
 tf.set_random_seed(2019)
 
 # parameters (adjust as needed)
-log_dir = './log/sem_ftfy_full2'
+log_dir = './log/campus_ftfy_full2'
 param = FTFYParam(ftfy_scope='ftfy', feat_scope='triplet-net', log_dir=log_dir)
 param.is_ftfy_model = False
 param.batch_size = 8 # 32 for v100, 8 for ws
@@ -31,28 +31,25 @@ param.decay_steps = 100000 # 60000 for v100
 param.train_log_every = 5000
 
 param.n_epoch = 100
+param.learning_rate = 0.01
 n_max_tests = 10000 # 5000
+n_max_steps = 0  # 0 for v100, sem
 
-is_sem = True
+is_sem = False
 if is_sem:
     param.data_dir = './Data/sem/train'
     param.model_path = './log/sem2'
     #param.data_dir = '/home/sungsooha/Desktop/Data/ftfy/sem/train'
-    param.learning_rate = 0.01
-    n_max_steps = 0 # 0 for v100, sem
 else:
-    param.data_dir = './Data/austin'
-    param.model_path = './log/campus' # './log/sem'
-    param.learning_rate = 0.005
-    
+    #param.data_dir = './Data/austin'
+    param.data_dir = '/home/sungsooha/Desktop/Data/ftfy/austin'
+    param.model_path = './log/campus/ckpt' # './log/sem'
+
     param.src_dir = 'campus_sources'
     param.tar_dir = 'campus_patch'
     param.train_datasets = 'campus'
     param.tar_patches_per_row = 13
     param.tar_patches_per_col = 6
-    param.train_log_every = 1000
-    
-    n_max_steps = 0 # 0 for v100, sem
 
 
 # In[ ]:
